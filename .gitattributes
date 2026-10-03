@@ -1,0 +1,14 @@
+# shell 脚本必须用 LF，否则 Linux 上报 "bad interpreter: /bin/bash^M"
+*.sh        text eol=lf
+*.yaml      text eol=lf
+*.yml       text eol=lf
+*.md        text eol=lf
+*.example   text eol=lf
+.gitignore  text eol=lf
+LICENSE     text eol=lf
+
+# 二进制
+*.png       binary
+*.ico       binary
+*.dat       binary
+*.mmdb      binary

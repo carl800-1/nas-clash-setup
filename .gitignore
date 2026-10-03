@@ -1,0 +1,24 @@
+# 真实配置（含节点信息，切勿提交）
+deploy/config/config.yaml
+deploy/config/config.yaml.bak
+deploy/config/cache.db
+deploy/config/providers/
+
+# GeoIP 数据文件（体积大，运行时下载）
+deploy/config/*.dat
+deploy/config/*.mmdb
+deploy/config/*.metadb
+deploy/config/ui/
+
+# 订阅链接
+sub.txt
+subscribe.txt
+*.sub
+
+# 日志
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp

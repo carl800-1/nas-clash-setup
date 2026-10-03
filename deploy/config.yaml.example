@@ -1,0 +1,113 @@
+# ============================================================
+# mihomo (Clash Meta) 基础配置模板
+# ============================================================
+# 使用方式（二选一）：
+#   A. 自动：把机场的 Clash 订阅链接填到 sub.txt，执行 ./update-sub.sh
+#   B. 手动：把下面的 proxies / proxy-groups 换成你的节点
+# ============================================================
+
+mixed-port: 7890
+allow-lan: true
+bind-address: "*"
+mode: rule
+log-level: info
+ipv6: false
+unified-delay: true
+tcp-concurrent: true
+
+# 控制器（供网页面板 metacubexd 连接）
+external-controller: 0.0.0.0:9090
+external-ui: ui
+secret: ""
+
+# DNS 配置（防污染关键）
+dns:
+  enable: true
+  listen: 0.0.0.0:1053
+  ipv6: false
+  enhanced-mode: fake-ip
+  fake-ip-range: 198.18.0.1/16
+  fake-ip-filter:
+    - "*.lan"
+    - "*.local"
+    - "localhost.ptlogin2.qq.com"
+    - "*.ugreen.com"
+  default-nameserver:
+    - 223.5.5.5
+    - 119.29.29.29
+  nameserver:
+    - https://1.1.1.1/dns-query
+    - https://dns.alidns.com/dns-query
+    - https://doh.pub/dns-query
+  fallback:
+    - https://1.1.1.1/dns-query
+    - https://8.8.8.8/dns-query
+  fallback-filter:
+    geoip: true
+    geoip-code: CN
+
+# ============================================================
+# 节点列表 —— 请替换为你的真实节点
+# 以下是占位示例，删除后填入你自己的
+# ============================================================
+proxies:
+  - name: "示例节点-请替换"
+    type: ss
+    server: 1.2.3.4
+    port: 443
+    cipher: aes-256-gcm
+    password: "your-password"
+    udp: true
+
+# ============================================================
+# 策略组
+# ============================================================
+proxy-groups:
+  - name: "🚀 节点选择"
+    type: select
+    proxies:
+      - "♻️ 自动选择"
+      - "示例节点-请替换"
+      - DIRECT
+
+  - name: "♻️ 自动选择"
+    type: url-test
+    url: http://www.gstatic.com/generate_204
+    interval: 300
+    tolerance: 50
+    proxies:
+      - "示例节点-请替换"
+
+  - name: "🌍 国外媒体"
+    type: select
+    proxies:
+      - "🚀 节点选择"
+      - "♻️ 自动选择"
+      - DIRECT
+
+  - name: "🐟 漏网之鱼"
+    type: select
+    proxies:
+      - "🚀 节点选择"
+      - DIRECT
+
+# ============================================================
+# 规则
+# ============================================================
+rules:
+  # 局域网直连
+  - GEOIP,LAN,DIRECT,no-resolve
+  # GitHub 相关走代理（解决 443 阻断）
+  - DOMAIN-SUFFIX,github.com,🚀 节点选择
+  - DOMAIN-SUFFIX,githubusercontent.com,🚀 节点选择
+  - DOMAIN-SUFFIX,github.io,🚀 节点选择
+  - DOMAIN-SUFFIX,ghcr.io,🚀 节点选择
+  - DOMAIN-SUFFIX,docker.io,🚀 节点选择
+  - DOMAIN-SUFFIX,docker.com,🚀 节点选择
+  # 常见需代理站点
+  - DOMAIN-SUFFIX,google.com,🚀 节点选择
+  - DOMAIN-SUFFIX,youtube.com,🌍 国外媒体
+  # 国内直连
+  - GEOIP,CN,DIRECT
+  # 其余
+  - MATCH,🐟 漏网之鱼

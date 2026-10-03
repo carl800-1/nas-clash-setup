@@ -1,0 +1,16 @@
+services:
+  mihomo:
+    image: docker.1ms.run/metacubex/mihomo:latest
+    container_name: mihomo
+    restart: "no"
+    network_mode: bridge
+    ports:
+      - "7890:7890"   # HTTP / 混合代理端口
+      - "7891:7891"   # SOCKS5 端口
+      - "9090:9090"   # 控制器 API（面板连接）
+    volumes:
+      - /volume1/docker/clash/config:/root/.config/mihomo
+    environment:
+      - TZ=Asia/Shanghai
+    cap_add:
+      - NET_ADMIN

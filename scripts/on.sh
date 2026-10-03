@@ -4,7 +4,7 @@
 # 用途：按需启动 mihomo，并让 Docker 守护进程也走代理
 # ============================================================
 
-CLASH_DIR="/volume1/docker/clash"
+CLASH_DIR="${CLASH_DIR:-/volume1/docker/clash}"
 PROXY_PORT="7890"
 PROXY_ADDR="192.168.3.3:${PROXY_PORT}"
 DOCKER_PROXY_CONF="/etc/systemd/system/docker.service.d/proxy.conf"

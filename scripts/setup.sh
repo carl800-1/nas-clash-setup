@@ -15,7 +15,8 @@
 
 set -e
 
-CLASH_DIR="/volume1/docker/clash"
+# 部署目录可用环境变量覆盖（便于在测试目录中验证，不影响生产环境）
+CLASH_DIR="${CLASH_DIR:-/volume1/docker/clash}"
 CONFIG_DIR="$CLASH_DIR/config"
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 IMAGE="docker.1ms.run/metacubex/mihomo:latest"

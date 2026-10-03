@@ -5,7 +5,7 @@
 #       （重要：不撤掉的话，docker pull 会卡 15 秒超时）
 # ============================================================
 
-CLASH_DIR="/volume1/docker/clash"
+CLASH_DIR="${CLASH_DIR:-/volume1/docker/clash}"
 DOCKER_PROXY_CONF="/etc/systemd/system/docker.service.d/proxy.conf"
 
 echo "=========================================="

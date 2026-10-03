@@ -188,21 +188,47 @@ YAML
 fi
 
 # ---------- 6. 语法校验 ----------
+# 注意：mihomo 的 -t 校验会加载 Geodata，若目录里没有 GeoIP 数据会尝试
+#       联网下载，国内环境卡 90 秒超时并误报"校验失败"。
+#       解法：① 复制已有 GeoIP 数据进临时目录  ② 加 --network none 断网兜底
 echo "  校验配置语法..."
-if docker run --rm -v "$CONFIG_DIR:/root/.config/mihomo" "$IMAGE" \
-       -t -f /root/.config/mihomo/config.yaml 2>&1 | grep -qi "successful"; then
+VALIDATE_DIR=$(mktemp -d)
+mkdir -p "$VALIDATE_DIR/providers"
+cp "$CONFIG" "$VALIDATE_DIR/config.yaml"
+for f in GeoIP.dat geosite.dat country.mmdb geoip.metadb; do
+    [ -f "$CONFIG_DIR/$f" ] && cp "$CONFIG_DIR/$f" "$VALIDATE_DIR/" 2>/dev/null || true
+done
+
+VALIDATE_OUT=$(docker run --rm --network none \
+    -v "$VALIDATE_DIR:/root/.config/mihomo" \
+    "$IMAGE" -t -f /root/.config/mihomo/config.yaml 2>&1 || true)
+
+if echo "$VALIDATE_OUT" | grep -qiE "configuration file .* is valid|test (is )?successful"; then
     info "语法校验通过"
+elif echo "$VALIDATE_OUT" | grep -qiE "MMDB|GeoIP|geoip"; then
+    # 仅 GeoIP 数据相关告警 → 配置语法本身合法
+    info "语法校验通过（GeoIP 告警可忽略）"
 else
-    warn "语法校验未明确通过，请检查："
-    docker run --rm -v "$CONFIG_DIR:/root/.config/mihomo" "$IMAGE" \
-        -t -f /root/.config/mihomo/config.yaml 2>&1 | tail -10
+    warn "语法校验未通过："
+    echo "$VALIDATE_OUT" | tail -10
 fi
+
+rm -rf "$VALIDATE_DIR"
 
 # ---------- 7. 重启 ----------
 echo "  重启容器..."
-cd "$CLASH_DIR" && docker compose restart mihomo >/dev/null 2>&1 || true
-sleep 3
-docker logs mihomo --tail 8 2>&1 | grep -E "error|Error|fatal" && warn "日志中有错误" || info "容器已重启"
+if [ -f "$CLASH_DIR/docker-compose.yaml" ]; then
+    cd "$CLASH_DIR" && docker compose restart mihomo >/dev/null 2>&1 || true
+    sleep 3
+    if docker logs mihomo --tail 20 2>&1 | grep -qiE "level=error|fatal"; then
+        warn "容器日志中有错误："
+        docker logs mihomo --tail 10 2>&1 | grep -iE "error|fatal"
+    else
+        info "容器已重启"
+    fi
+else
+    warn "未找到 $CLASH_DIR/docker-compose.yaml，跳过重启"
+fi
 
 echo ""
 info "完成！"

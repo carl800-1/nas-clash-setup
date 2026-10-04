@@ -379,7 +379,57 @@ curl -X POST -d '{"on":true}'  http://127.0.0.1:8090/api/guard   # 开
 | **所有流量直连、代理形同虚设** | `♻️ 自动选择` 组含 `local` 里的 `direct` 占位节点，延迟近 0 永远选它 | 自动组只 `use: [airport]` |
 | github/google 报 `error: xxx-node` | `🌐 代理` 默认用 url-test 组，全挂时退化成选第一个死节点 | 默认改用 `🔰 选择节点`（手动） |
 | 测速绿灯但 google 打不开 | 延迟只验隧道，不验 TLS | 看「实测通」；开自动守护 |
+| **浏览器 ERR_CONNECTION_TIMED_OUT，但 curl 返回 200** | `gstatic.com`（Google 的 JS/CSS/字体/图片）被 `GEOIP,CN,DIRECT` 判成国内 IP 走直连，页面 HTML 拿到了但所有资源加载不出来 | 在 `GEOIP,CN` **之前**加 5 条 `DOMAIN-SUFFIX,gstatic.com / googleapis.com / gstatic.cn / google.com / googleusercontent.com` 强制代理 |
+| 面板 8090 一直转圈 / `HTTP 000` | 面板进程卡死，端口还监听所以 `docker ps` 显示 Up | `docker restart clash-panel`；先 `curl -m 5 http://IP:8090/api/status` 探活 |
 | **Windows 上 shell 脚本 `bad interpreter: /bin/bash^M`** | `git add` 把 CRLF 带进去了 | 仓库根 `.gitattributes`：`*.sh text eol=lf` |
+
+### 排查「curl 通但浏览器打不开」
+
+这是最难定位的一类问题 —— 因为 **`curl` 能通不代表浏览器能开**。
+`curl` 只请求一个 URL，浏览器要同时加载几十个子资源（JS/CSS/字体/图片），
+只要其中一个卡住，页面就一直转圈然后超时。
+
+按这个顺序查，三步能定位：
+
+```bash
+# ① 先看日志里浏览器到底命中了什么规则 —— 最关键
+ssh Frank@192.168.3.3 "sudo docker logs mihomo --since 5m | grep '192.168.3.168' | tail -20"
+#    找 using DIRECT 的行，特别是 gstatic / googleapis 这些资源域名
+
+# ② 测「大文件快 vs 小文件慢」这种反常
+curl -x http://192.168.3.3:7890 -o /dev/null -w "%{http_code} %{size_download}B %{time_total}s\n" \
+  --max-time 40 "https://speed.cloudflare.com/__down?bytes=5000000"     # 基准
+curl -x http://192.168.3.3:7890 -o /dev/null -w "%{http_code} %{size_download}B %{time_total}s\n" \
+  --max-time 30 https://www.google.com/                                  # 对照
+#    实测踩坑时：5MB 要 1.9s，但 218KB 的 Google 首页要 4.1s ← 就是资源被直连卡住了
+
+# ③ 用 Python 逐个加载子资源（别用 shell for 循环，URL 里的 & 会把命令截断）
+python - <<'EOF'
+import re, ssl, urllib.request, time
+op = urllib.request.build_opener(
+    urllib.request.ProxyHandler({'http':'http://192.168.3.3:7890'}),
+    urllib.request.HTTPSHandler(context=ssl.create_default_context()))
+ua = {'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36'}
+h = op.open(urllib.request.Request('https://www.google.com/', headers=ua), timeout=25).read().decode('utf-8','ignore')
+urls = ['https://'+u.replace('&amp;','&') for u in re.findall(r'(?:src|href)="(?:https?:)?//([^"]+)"', h)]
+seen = []
+[seen.append(u) for u in urls if u not in seen]
+for u in seen[:12]:
+    t0 = time.time()
+    try:
+        r = op.open(urllib.request.Request(u, headers=ua), timeout=18); r.read()
+        print(f'  {r.status} {time.time()-t0:5.2f}s  {u[:50]}')
+    except Exception as e:
+        print(f'  ERR {time.time()-t0:5.2f}s  {type(e).__name__}  {u[:50]}')
+EOF
+```
+
+**本项目已修好的实例**：`gstatic.com` 的 IP 被 GeoIP 判成 CN → 命中 `GEOIP,CN,DIRECT` 走直连。
+修复后首页从 4.1s 降到 0.61s，12 个子资源全部加载成功（之前浏览器永远转圈）。
+
+> ⚠️ 顺带一提：本地 `nslookup` 看到被污染的 IP **不代表**浏览器有问题。
+> 走 HTTP 代理时域名解析在代理侧完成（`time_namelookup` 会是 0.00004s 量级），
+> 本地 DNS 污染不影响。**先确认请求走没走代理，再谈 DNS。**
 
 ### 环境相关（NAS / Windows）
 

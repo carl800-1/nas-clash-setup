@@ -493,6 +493,21 @@ details[open] summary{border-bottom:1px solid var(--line)}
       <b>🛡 自动守护</b>用的是真实 HTTPS 请求（google + cloudflare），
       页面上会标出 <b>✅ 实测通</b> / <b>❌ 实测不通</b>，这个才准。
       免费机场节点经常时好时坏，建议常开。</p>
+      <h4>浏览器打不开 google，但命令行 curl 是 200？</h4>
+      <p>这是<b>最容易被误判</b>的情况：curl 只请求一个 URL，
+      浏览器要同时加载几十个子资源（JS / CSS / 字体 / 图片），
+      任何一个卡住页面就一直转圈，最后 <code>ERR_CONNECTION_TIMED_OUT</code>。</p>
+      <p>本 setup 踩过的具体坑：<code>gstatic.com</code>（Google 的静态资源服务器）
+      的 IP 被 GeoIP 库判成 CN，命中了 <code>GEOIP,CN,DIRECT</code> 走直连 ——
+      首页 HTML 拿得到，但所有资源加载不出来。</p>
+      <p><b>排查第一步永远是看日志</b>：日志里出现
+      <code>match GeoIP(cn) using DIRECT</code> 就是它。
+      修复方法是在 <code>GEOIP,CN</code> 规则<b>之前</b>加
+      <code>DOMAIN-SUFFIX,gstatic.com,🌐 代理</code>
+      （<code>config.example.yaml</code> 里已内置这 5 条）。</p>
+      <p>⚠️ 另外：本地 <code>nslookup</code> 看到被污染的 IP
+      <b>不代表</b>浏览器有问题 —— 走 HTTP 代理时域名解析在代理侧完成。
+      先确认请求走没走代理，再谈 DNS。</p>
       <h4>接不上某个节点怎么办</h4>
       <p>本 setup 里节点域名走了强制直连解析（<code>nameserver-policy</code>）。
       换机场后如果<b>所有节点全超时</b>，八成是漏了新机场的节点域名后缀 ——

@@ -162,6 +162,23 @@ rules:
   - IP-CIDR,10.0.0.0/8,DIRECT,no-resolve
   - IP-CIDR,172.16.0.0/12,DIRECT,no-resolve
 
+  # ⚠️ Google 全家桶强制代理 —— 必须排在 GEOIP,CN 之前
+  #
+  # 踩过的坑：gstatic.com 是 Google 的 JS/CSS/字体/图片服务器，
+  # 但它的 IP 会被 GeoIP 库判成 CN，于是命中下面那条 GEOIP,CN,DIRECT
+  # 走了直连。表现是：首页 HTML 拿到了（curl 返回 200），
+  # 但浏览器里 JS/CSS/图片全部加载不出来，页面一直转圈，
+  # 最终 ERR_CONNECTION_TIMED_OUT。
+  #
+  # 排查线索：mihomo 日志出现 match GeoIP(cn) using DIRECT 就是它。
+  # 对比 Cloudflare 5MB 只要 1.9s 而 Google 首页 218KB 要 4.1s，
+  # 这种「大文件快、小文件慢」的反常就是资源被直连卡住。
+  - DOMAIN-SUFFIX,gstatic.com,🌐 代理
+  - DOMAIN-SUFFIX,googleapis.com,🌐 代理
+  - DOMAIN-SUFFIX,gstatic.cn,🌐 代理
+  - DOMAIN-SUFFIX,google.com,🌐 代理
+  - DOMAIN-SUFFIX,googleusercontent.com,🌐 代理
+
   # 国内网站直连
   - GEOIP,CN,DIRECT
   - RULE-SET,cncidr,DIRECT

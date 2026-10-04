@@ -1,0 +1,238 @@
+# ============================================================
+# config.yaml —— provider 架构配置（自动更新版）
+#
+# ⚠️ 本文件是模板。首次部署请复制成 config.yaml 再改：
+#     cp config/config.example.yaml config/config.yaml
+#   真实的 config.yaml 含订阅链接（含 token），已被 .gitignore 排除。
+#
+# 架构：
+#   节点：来自 proxy-providers (type:http)，mihomo 每小时自动拉取
+#   规则：来自 rule-providers (type:file)，本地文件，不依赖运行时下载
+#
+# 好处：
+#   - 换订阅只改 proxy-providers.airport.url 一行，重启容器即可
+#   - 节点每 3600s 自动更新；也可在 8090 控制台点「⚡ 刷新订阅」立即拉取
+#   - ♻️ 自动选择 组自动选最快可用节点
+#
+# 代价：
+#   分流规则用 Loyalsoldier 规则集（成熟稳定，~33.5 万条），
+#   精细度不如机场自带的那种针对特定服务的规则集。
+# ============================================================
+
+# ---------- 基础 ----------
+#记住你手动选的节点，配置重载/provider 更新后不再被冲回第一个
+store-selected: true
+store-fake-ip: true
+
+mixed-port: 7890
+socks-port: 7891
+allow-lan: true
+bind-address: '*'
+mode: rule
+log-level: info
+ipv6: false
+unified-delay: true
+tcp-concurrent: true
+find-process-mode: strict
+# 用 mmdb 而不是 GeoIP.dat：
+# 现存的 GeoIP.dat 是 China-only 精简版，缺 US/JP 等国家码，
+# 配上 GEOIP,US 这类规则会直接报 "country code us not found" 导致配置加载失败。
+# country.mmdb / geoip.metadb 才是完整全球库。
+geodata-mode: false
+
+external-controller: 0.0.0.0:9090
+external-ui: ui
+secret: ''
+
+# ---------- 节点来源（自动更新）----------
+proxy-providers:
+  airport:
+    type: http
+    # ↑ 换机场就改这一行（填自己的订阅链接，务必是 Clash 格式）
+    url: "https://你的机场域名/你的订阅路径?clash=1"
+    path: ./providers/airport.yaml
+    interval: 3600          # 每小时自动更新；也可在 8090 面板点「刷新订阅」立即拉取
+    timeout: 60
+    health-check:
+      enable: true
+      url: http://cp.cloudflare.com/generate_204
+      interval: 300         # 每 5 分钟体检一次，死了自动标记
+      timeout: 8000
+      lazy: false
+
+  # 手动添加的节点（面板可维护，type:file 不联网）
+  # 用 scripts/add-node.sh 或直接编辑这个文件
+  local:
+    type: file
+    path: ./providers/local.yaml
+    health-check:
+      enable: true
+      url: http://cp.cloudflare.com/generate_204
+      interval: 300
+      timeout: 8000
+
+# ---------- 规则来源（本地文件，不依赖运行时下载）----------
+rule-providers:
+  reject:
+    type: file
+    behavior: domain
+    path: ./ruleset/reject.txt
+  direct:
+    type: file
+    behavior: domain
+    path: ./ruleset/direct.txt
+  proxy:
+    type: file
+    behavior: domain
+    path: ./ruleset/proxy.txt
+  cncidr:
+    type: file
+    behavior: ipcidr
+    path: ./ruleset/cncidr.txt
+
+# ---------- 策略组 ----------
+proxy-groups:
+  # 主选择组：手动选（面板里点节点切换）
+  - name: 🔰 选择节点
+    type: select
+    use: [airport, local]
+
+  # 自动测速组：始终用最快的可用节点，掉了自动切
+  # ⚠️ 只用 airport，不含 local —— local.yaml 里有个 direct 类型的占位节点，
+  #    direct 延迟接近 0ms，url-test 永远会选它，导致全部流量直连（代理失效）。
+  #    手动加的节点在「🔰 选择节点」里手动点选即可。
+  - name: ♻️ 自动选择
+    type: url-test
+    use: [airport]
+    # 用 Cloudflare 的 204，国内可达；gstatic 在部分机场节点上会 404/超时
+    url: http://cp.cloudflare.com/generate_204
+    interval: 300
+    tolerance: 50
+    lazy: false
+    # ⚠️ 全挂时不要退化成选第一个节点（那个大概率也是死的），
+    #    宁可保持原状也不要静默指向一个不通的出口。
+    max-failed-times: 3
+
+  # 需要代理的流量走这里。
+  # ⚠️ 默认用「🔰 选择节点」而不是「♻️ 自动选择」——
+  # url-test 测速失败时会退化成选列表第一个节点，那通常也是挂的，
+  # 实测会导致 github/google 报 error: xxx-node 而整条链路失败。
+  # 想用自动切换就在面板里手动把这里切到♻️ 自动选择。
+  - name: 🌐 代理
+    type: select
+    proxies: [🔰 选择节点, ♻️ 自动选择, DIRECT]
+
+  - name: 🇨🇳 国内网站
+    type: select
+    proxies: [DIRECT, 🔰 选择节点]
+
+  - name: 🎮 Steam
+    type: select
+    proxies: [DIRECT, 🔰 选择节点]
+
+  - name: 🎬 国外媒体
+    type: select
+    proxies: [🔰 选择节点, ♻️ 自动选择, DIRECT]
+
+  - name: 📦 软件更新
+    type: select
+    proxies: [DIRECT, 🔰 选择节点]
+
+  # 兜底组：没匹配到任何规则的流量
+  - name: 🐟 漏网之鱼
+    type: select
+    proxies: [🔰 选择节点, ♻️ 自动选择, DIRECT]
+
+  - name: 🛑 拦截广告
+    type: select
+    proxies: [REJECT, DIRECT]
+
+# ---------- 分流规则 ----------
+# 顺序很重要：先拦截广告 → 再国内直连 → 最后才代理
+rules:
+  # 广告拦截
+  - RULE-SET,reject,🛑 拦截广告
+
+  # 私有域名 / 本地网络直连
+  - DOMAIN-SUFFIX,local,DIRECT
+  - DOMAIN-SUFFIX,lan,DIRECT
+  - DOMAIN-SUFFIX,ugreen.com,DIRECT
+  - IP-CIDR,127.0.0.0/8,DIRECT,no-resolve
+  - IP-CIDR,192.168.0.0/16,DIRECT,no-resolve
+  - IP-CIDR,10.0.0.0/8,DIRECT,no-resolve
+  - IP-CIDR,172.16.0.0/12,DIRECT,no-resolve
+
+  # 国内网站直连
+  - GEOIP,CN,DIRECT
+  - RULE-SET,cncidr,DIRECT
+  - RULE-SET,direct,🇨🇳 国内网站
+
+  # 局域网服务（NAS 自己的服务）
+  - DOMAIN,frankservers,DIRECT
+  - DOMAIN-SUFFIX,frankservers,DIRECT
+
+  # 特定服务分流
+  - DOMAIN-SUFFIX,steampowered.com,🎮 Steam
+  - DOMAIN-SUFFIX,steamcommunity.com,🎮 Steam
+  - DOMAIN-SUFFIX,github.com,🌐 代理
+  - DOMAIN-SUFFIX,githubusercontent.com,🌐 代理
+  - DOMAIN-SUFFIX,githubassets.com,🌐 代理
+
+  # 需要代理的域名
+  - RULE-SET,proxy,🌐 代理
+
+  # 国外媒体默认代理
+  - GEOIP,US,🎬 国外媒体
+  - GEOIP,JP,🎬 国外媒体
+  - GEOIP,KR,🎬 国外媒体
+  - GEOIP,TW,🎬 国外媒体
+  - GEOIP,HK,🎬 国外媒体
+
+  # 兜底
+  - MATCH,🐟 漏网之鱼
+
+# ---------- DNS（防污染）----------
+# 铁律（踩过两次坑）：
+#   1. nameserver 不能只用 DoH —— 解析 DoH 域名本身需要 DNS，会死锁
+#   2. fallback 不能用 cloudflare/google DoH —— 大陆被 reset
+#   3. 节点服务器域名必须强制直连解析（用通配符，避免机场换域名后失效）
+dns:
+  enable: true
+  listen: 0.0.0.0:1053
+  enhanced-mode: fake-ip
+  fake-ip-range: 198.18.0.1/16
+  fake-ip-filter:
+    - '*.lan'
+    - '*.local'
+    - '*.ugreen.com'
+    - '+.msftconnecttest.com'
+  ipv6: false
+
+  default-nameserver:
+    - 223.5.5.5
+    - 119.29.29.29
+
+  nameserver:
+    - 223.5.5.5
+    - 119.29.29.29
+    - https://dns.alidns.com/dns-query
+    - https://doh.pub/dns-query
+
+  fallback:
+    - https://doh.pub/dns-query
+    - https://dns.alidns.com/dns-query
+
+  fallback-filter:
+    geoip: true
+    geoip-code: CN
+
+  # 关键：用通配符覆盖机场全部节点域名。
+  # 机场换节点域名后这一条依然有效，不需要像旧方案那样重跑脚本改硬编码域名。
+  # ⚠️ 把下面的示例域名换成你自己机场的节点域名（面板「说明」页有当前值）。
+  nameserver-policy:
+    '+.entry.example.com':
+      - 223.5.5.5
+      - 119.29.29.29
+    '你的机场订阅域名.example.com':
+      - 223.5.5.5
+      - 119.29.29.29

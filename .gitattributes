@@ -1,5 +1,8 @@
 # shell 脚本必须用 LF，否则 Linux 上报 "bad interpreter: /bin/bash^M"
 *.sh          text eol=lf
+*.py          text eol=lf
+*.html        text eol=lf
+*.txt         text eol=lf
 *.yaml        text eol=lf
 *.yml         text eol=lf
 *.md          text eol=lf

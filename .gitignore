@@ -1,14 +1,21 @@
-# 真实配置（含节点信息，切勿提交）
-deploy/config/config.yaml
-deploy/config/config.yaml.bak
-deploy/config/cache.db
-deploy/config/providers/
+# ============================================================
+# 真实配置（含订阅链接与节点信息，切勿提交）
+# ============================================================
 
-# GeoIP 数据文件（体积大，运行时下载）
-deploy/config/*.dat
-deploy/config/*.mmdb
-deploy/config/*.metadb
-deploy/config/ui/
+# 真实 mihomo 配置（由 config/config.example.yaml 复制而来）
+config/config.yaml
+config/config.yaml.bak
+config/cache.db
+
+# provider 缓存与规则集（体积大 / 运行时生成）
+config/providers/
+config/ruleset/
+
+# GeoIP / 域名库数据文件（体积大，运行时下载或手工放置）
+*.dat
+*.mmdb
+*.metadb
+config/ui/
 
 # 订阅链接
 sub.txt
@@ -22,3 +29,7 @@ subscribe.txt
 .vscode/
 .idea/
 *.swp
+
+# Python
+__pycache__/
+*.pyc

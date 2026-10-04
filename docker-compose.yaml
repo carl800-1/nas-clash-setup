@@ -1,0 +1,110 @@
+# ============================================================
+# docker-compose.yaml —— mihomo 代理 + 订阅控制台
+# nas-clash-setup v2.0.0
+# ============================================================
+# 适用：绿联 NAS / 任何 Linux + Docker 环境
+# 实测环境：绿联 DXP4800 Plus (UGOS Pro, Debian 12)
+#
+# 【在绿联 GUI 里的用法】
+#   Docker → 项目 → 创建 → 项目名填 clash
+#   → 选择「使用现有的编排文件」或粘贴下面的内容
+#   → 项目目录选 /volume1/docker/clash
+#   → 点「立即构建」
+#   这样项目就会登记到 GUI，之后启停 / 日志 / 更新都能在界面里管。
+#
+# 【命令行用法】
+#   docker compose up -d
+#   docker compose down
+#
+# 【访问入口】
+#   8090  订阅控制台（说明 / 控制 / 状态 一体化页面）
+#   9090  mihomo 官方面板 metacubexd（只读）
+#   7890  HTTP / SOCKS5 混合代理端口
+# ============================================================
+
+services:
+  # ---------------- mihomo 代理核心 ----------------
+  mihomo:
+    # 国内加速源（若拉不动，换 ghcr.io/metacubex/mihomo:latest）
+    image: docker.1ms.run/metacubex/mihomo:latest
+    container_name: mihomo
+
+    # "no" = 不随系统自启，按需手动启停
+    # 若想常驻，改为 "unless-stopped"
+    restart: "no"
+
+    network_mode: bridge
+
+    ports:
+      - "7890:7890"     # HTTP / SOCKS5 混合代理
+      - "7891:7891"     # SOCKS5（单独）
+      - "9090:9090"     # 控制器 API + 网页面板
+
+    volumes:
+      # ⚠️ 改成你的配置目录（必须有 config.yaml）
+      - /volume1/docker/clash/config:/root/.config/mihomo
+      - /etc/localtime:/etc/localtime:ro
+
+    environment:
+      - TZ=Asia/Shanghai
+
+    # mihomo 需要 NET_ADMIN 才能操作网络栈（TUN 模式必需）
+    cap_add:
+      - NET_ADMIN
+
+    # 日志轮转，避免长期运行占满磁盘
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:9090/version"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ---------------- 订阅控制台（8090）----------------
+  panel:
+    image: python:3.13-slim
+    container_name: clash-panel
+    restart: "no"
+
+    # 用 host 网络：mihomo 是 network_mode: bridge，容器名跨网络解析不到。
+    # host 下 127.0.0.1:9090 就是宿主的 mihomo 控制器，docker.sock 也在宿主。
+    # 代价是 8090 直接占宿主端口，ports 一节要省略（host 模式下不能映射）。
+    network_mode: host
+
+    depends_on:
+      - mihomo
+
+    volumes:
+      # 整个 clash 目录挂进去：面板要读 config.yaml、改订阅地址、
+      # 触发 provider 更新、跑探测脚本
+      - /volume1/docker/clash:/volume1/docker/clash
+      # 启停 mihomo 容器需要访问 Docker daemon
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /etc/localtime:/etc/localtime:ro
+
+    environment:
+      - TZ=Asia/Shanghai
+      - CLASH_DIR=/volume1/docker/clash
+      - PANEL_PORT=8090
+      # host 网络下 127.0.0.1 就是宿主，mihomo 控制器的映射端口
+      - MIHOMO_API=http://127.0.0.1:9090
+      - DOCKER_SOCK=/var/run/docker.sock
+      - MIHOMO_CONTAINER=mihomo
+      - PYTHONUNBUFFERED=1
+
+    # 面板要执行 python3 跑探测脚本，不允许精简掉
+    command: >
+      sh -c "pip install --no-cache-dir pyyaml -q &&
+             python3 /volume1/docker/clash/webapp/sub-panel.py"
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

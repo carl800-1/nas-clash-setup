@@ -1,0 +1,1099 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>mihomo 控制台 · NAS</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🛡️</text></svg>">
+<style>
+:root{
+  --bg:#0f1116; --card:#171a21; --card2:#1d212a; --line:#272c38;
+  --tx:#e6e8ee; --tx2:#9aa1b1; --tx3:#6b7383;
+  --blue:#4a9eff; --green:#3ecf8e; --yellow:#f0b429; --red:#f0616d;
+  --purple:#a78bfa; --cyan:#22d3ee;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--tx); font-size:14px; line-height:1.6;
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC",
+    "Microsoft YaHei",sans-serif;
+  padding-bottom:60px;
+}
+.wrap{max-width:1400px;margin:0 auto;padding:0 16px}
+a{color:var(--blue)}
+h1{font-size:20px;font-weight:650}
+h2{font-size:15px;font-weight:600}
+.sub{color:var(--tx2);font-size:12.5px;margin-bottom:16px}
+code,.mono{font-family:"SF Mono",Consolas,"Courier New",monospace;font-size:12px}
+
+/* ---- 顶栏 ---- */
+.topbar{
+  position:sticky; top:0; z-index:50; background:rgba(15,17,22,.94);
+  backdrop-filter:blur(10px); border-bottom:1px solid var(--line);
+  margin:0 -16px 16px; padding:12px 16px;
+}
+.topbar .wrap{padding:0}
+.tb-row{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.tb-title{margin-right:auto}
+.tb-title h1{display:flex;align-items:center;gap:8px}
+.tb-title .sub{margin:2px 0 0}
+
+/* ---- 控件 ---- */
+.btn{
+  background:var(--card2); color:var(--tx); border:1px solid var(--line);
+  padding:7px 13px; border-radius:8px; cursor:pointer; font-size:13px;
+  font-family:inherit; transition:.15s; white-space:nowrap;
+}
+.btn:hover:not(:disabled){background:#252a35; border-color:#3a4152}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.primary{background:var(--blue);border-color:var(--blue);color:#fff}
+.btn.primary:hover:not(:disabled){background:#3b8ae8}
+.btn.good{color:var(--green);border-color:#2a5c46}
+.btn.good:hover:not(:disabled){background:#1a3d2e}
+.btn.bad{color:var(--red);border-color:#5c2a30}
+.btn.bad:hover:not(:disabled){background:#3d1a1f}
+.btn.sm{padding:4px 9px;font-size:12px}
+.sel{
+  background:var(--card2);color:var(--tx);border:1px solid var(--line);
+  padding:7px 10px;border-radius:8px;font-size:13px;font-family:inherit;cursor:pointer;
+}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{
+  background:transparent;border:0;color:var(--tx2);padding:7px 13px;cursor:pointer;
+  font-size:13px;font-family:inherit;transition:.15s;
+}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button.on{background:var(--blue);color:#fff;font-weight:500}
+.seg button:hover:not(.on){background:var(--card2);color:var(--tx)}
+
+/* ---- 状态灯 ---- */
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--tx3);margin-right:6px}
+.dot.on{background:var(--green);box-shadow:0 0 7px var(--green)}
+.dot.off{background:var(--red);box-shadow:0 0 7px var(--red)}
+.dot.warn{background:var(--yellow);box-shadow:0 0 7px var(--yellow)}
+
+/* ---- 卡片 ---- */
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:14px}
+.card-h{display:flex;align-items:center;gap:9px;margin-bottom:12px;flex-wrap:wrap}
+.card-h h2{margin-right:auto}
+.hint{color:var(--tx3);font-size:12px}
+
+.grid{display:grid;gap:10px}
+.g6{grid-template-columns:repeat(6,1fr)}
+.g4{grid-template-columns:repeat(4,1fr)}
+.g3{grid-template-columns:repeat(3,1fr)}
+.g2{grid-template-columns:repeat(2,1fr)}
+@media(max-width:1000px){.g6{grid-template-columns:repeat(3,1fr)}.g4{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:640px){.g6,.g4,.g3,.g2{grid-template-columns:repeat(2,1fr)}}
+
+.stat{background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.stat .k{color:var(--tx3);font-size:11.5px;margin-bottom:3px}
+.stat .v{font-size:19px;font-weight:650;letter-spacing:-.4px}
+.stat .v.sm{font-size:13px;font-weight:500;word-break:break-all}
+
+/* ---- 速率 ---- */
+.spark{display:flex;align-items:flex-end;gap:2px;height:26px;width:110px}
+.spark i{flex:1;background:var(--green);border-radius:1px 1px 0 0;min-height:1px;opacity:.75}
+
+/* ---- 策略组 ---- */
+.grp{background:var(--card2);border:1px solid var(--line);border-radius:10px;margin-bottom:8px;overflow:hidden}
+.grp-h{display:flex;align-items:center;gap:9px;padding:10px 12px;cursor:pointer;user-select:none}
+.grp-h:hover{background:#222632}
+.grp-h .nm{font-weight:550;font-size:13.5px}
+.grp-h .badge{
+  font-size:10.5px;padding:1.5px 6px;border-radius:5px;background:#2a3040;
+  color:var(--tx2);font-weight:400;
+}
+.grp-h .now{color:var(--blue);font-size:12.5px;font-weight:500;margin-left:auto;max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.grp-h .caret{color:var(--tx3);transition:.2s;font-size:11px}
+.grp.open .grp-h .caret{transform:rotate(90deg)}
+.grp-b{display:none;padding:0 8px 8px}
+.grp.open .grp-b{display:block}
+
+.node{
+  display:flex;align-items:center;gap:9px;padding:7px 9px;border-radius:7px;
+  cursor:pointer;transition:.12s;font-size:13px;
+}
+.node:hover{background:#272c38}
+.node.sel{background:#1e3a56;box-shadow:inset 0 0 0 1px var(--blue)}
+.node .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.node .dt{font-size:11.5px;color:var(--tx3);font-variant-numeric:tabular-nums;min-width:58px;text-align:right}
+.node .dt.ok{color:var(--green)}
+.node .dt.bad{color:var(--red)}
+.node .tag{font-size:10.5px;padding:1px 5px;border-radius:4px;background:#2a3040;color:var(--tx3)}
+.node.kind-GROUP .nm{color:var(--purple)}
+.node.kind-BUILTIN .nm{color:var(--cyan)}
+
+/* ---- 订阅 ---- */
+.ring{position:relative;width:104px;height:104px;flex-shrink:0}
+.ring svg{transform:rotate(-90deg)}
+.ring .lbl{position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center}
+.ring .lbl b{font-size:17px;font-weight:650}
+.ring .lbl small{color:var(--tx3);font-size:10.5px}
+.bar{height:6px;background:#2a3040;border-radius:3px;overflow:hidden;margin:9px 0}
+.bar i{display:block;height:100%;background:linear-gradient(90deg,var(--green),var(--yellow));border-radius:3px;transition:width .5s}
+
+/* ---- 表格 ---- */
+.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
+.tbl th{
+  text-align:left;padding:7px 9px;color:var(--tx3);font-weight:500;font-size:11.5px;
+  border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--card);
+}
+.tbl td{padding:6px 9px;border-bottom:1px solid #1f2430;vertical-align:top}
+.tbl tr:hover td{background:#1c2029}
+.tbl .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.scroll{max-height:290px;overflow:auto;border-radius:8px;border:1px solid var(--line)}
+.pill{display:inline-block;font-size:10.5px;padding:1px 6px;border-radius:4px;background:#2a3040;color:var(--tx2)}
+.pill.p{background:#1e3a56;color:var(--blue)}
+
+/* ---- 日志 ---- */
+.logbox{
+  background:#0b0d11;border:1px solid var(--line);border-radius:8px;padding:10px;
+  font-family:"SF Mono",Consolas,monospace;font-size:11.5px;line-height:1.65;
+  max-height:230px;overflow:auto;
+}
+.logbox div{white-space:pre-wrap;word-break:break-all;padding:1px 0}
+.logbox .info{color:#8b93a5}
+.logbox .warning{color:var(--yellow)}
+.logbox .error{color:var(--red)}
+.logbox:empty::before{content:"（暂无日志）";color:var(--tx3)}
+
+/* ---- 说明 ---- */
+details{border:1px solid var(--line);border-radius:9px;margin-bottom:7px;background:var(--card2)}
+details summary{
+  padding:10px 13px;cursor:pointer;font-weight:550;font-size:13.5px;
+  list-style:none;user-select:none;display:flex;align-items:center;gap:8px;
+}
+details summary::-webkit-details-marker{display:none}
+details summary::before{content:"▸";color:var(--tx3);font-size:11px;transition:.2s}
+details[open] summary::before{transform:rotate(90deg)}
+details[open] summary{border-bottom:1px solid var(--line)}
+.dbody{padding:12px 14px;font-size:13px;color:var(--tx2)}
+.dbody h4{color:var(--tx);font-size:13px;margin:12px 0 5px;font-weight:600}
+.dbody h4:first-child{margin-top:0}
+.dbody ul{margin:5px 0 5px 18px}
+.dbody li{margin:3px 0}
+.dbody code{background:#0b0d11;padding:1.5px 5px;border-radius:4px;color:var(--cyan);font-size:11.5px}
+.dbody table{width:100%;border-collapse:collapse;margin:6px 0;font-size:12.5px}
+.dbody th,.dbody td{border:1px solid var(--line);padding:6px 9px;text-align:left}
+.dbody th{color:var(--tx3);font-weight:500;font-size:11.5px;background:#171a21}
+
+/* ---- 提示 ---- */
+#toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);z-index:200;display:flex;flex-direction:column;gap:7px;align-items:center}
+.tst{
+  background:var(--card2);border:1px solid var(--line);padding:9px 17px;border-radius:9px;
+  font-size:13px;box-shadow:0 7px 22px rgba(0,0,0,.45);animation:up .22s;
+}
+.tst.ok{border-color:#2a5c46;color:var(--green)}
+.tst.bad{border-color:#5c2a30;color:var(--red)}
+@keyframes up{from{opacity:0;transform:translateY(9px)}}
+
+/* ---- 弹窗 ---- */
+#mask{
+  position:fixed;inset:0;background:rgba(0,0,0,.66);z-index:300;
+  display:none;align-items:center;justify-content:center;padding:20px;
+  backdrop-filter:blur(3px);
+}
+#mask.on{display:flex}
+.modal{background:var(--card);border:1px solid var(--line);border-radius:13px;padding:20px;max-width:440px;width:100%}
+.modal h3{margin-bottom:11px;font-size:16px}
+.modal p{color:var(--tx2);margin-bottom:17px;font-size:13px}
+.modal .acts{display:flex;gap:9px;justify-content:flex-end}
+
+/* ---- 输入 ---- */
+.urlwrap{flex:1;min-width:260px;display:flex;align-items:center;background:var(--card2);
+  border:1px solid var(--line);border-radius:8px;padding-left:11px}
+.urlwrap input{
+  flex:1;background:transparent;border:0;color:var(--tx);padding:8px 7px;
+  font-size:13px;font-family:"SF Mono",Consolas,monospace;outline:none;min-width:0;
+}
+.copy{background:transparent;border:0;color:var(--tx3);cursor:pointer;padding:6px 9px;font-size:14px}
+.copy:hover{color:var(--blue)}
+
+.tabs{display:flex;gap:5px;margin-bottom:12px;flex-wrap:wrap}
+.tab{padding:6px 13px;border-radius:8px;cursor:pointer;font-size:13px;color:var(--tx2);
+  background:var(--card2);border:1px solid transparent}
+.tab:hover{color:var(--tx)}
+.tab.on{background:#1e3a56;color:var(--blue);border-color:#2d5580}
+.hide{display:none!important}
+</style>
+</head>
+<body>
+
+<!-- ════════ 顶栏 ════════ -->
+<div class="topbar">
+  <div class="wrap">
+    <div class="tb-row">
+      <div class="tb-title">
+        <h1>🛡️ mihomo 控制台 <a id="panelLink" href="#" target="_blank" rel="noreferrer"
+          style="font-size:12px;font-weight:400;text-decoration:none">备用面板 ↗</a></h1>
+        <div class="sub">
+          <span class="dot" id="dCt"></span><span id="tCt">-</span>
+          &nbsp;·&nbsp; <span id="tCore">-</span>
+          &nbsp;·&nbsp; <span id="tArch">-</span>
+          &nbsp;·&nbsp; <span id="tNodes">-</span>
+        </div>
+      </div>
+
+      <!-- 模式 -->
+      <div class="seg" id="modeSeg">
+        <button data-m="rule"   class="on">规则</button>
+        <button data-m="global">全局</button>
+        <button data-m="direct">直连</button>
+      </div>
+
+      <!-- 启停 -->
+      <div class="seg">
+        <button id="btnStart"  class="btn good sm" style="border:0;border-radius:0">▶ 启动</button>
+        <button id="btnRestart" class="btn sm"     style="border:0;border-radius:0">↻ 重启</button>
+        <button id="btnStop"   class="btn bad sm"  style="border:0;border-radius:0">■ 停止</button>
+      </div>
+
+      <button class="btn primary" id="btnUpdate">⟳ 立即拉取订阅</button>
+      <button class="btn" id="btnRefresh" title="只重新拉一次订阅，几秒完成；不改任何配置">⚡ 刷新订阅</button>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+
+<!-- ════════ ② 状态 ════════ -->
+<div class="grid g6" style="margin-bottom:14px">
+  <div class="stat"><div class="k">运行模式</div><div class="v sm" id="vMode">-</div></div>
+  <div class="stat"><div class="k">当前节点</div><div class="v sm" id="vNow">-</div></div>
+  <div class="stat"><div class="k">策略组</div><div class="v" id="vGroups">-</div></div>
+  <div class="stat"><div class="k">规则</div><div class="v" id="vRules">-</div></div>
+  <div class="stat"><div class="k">内存</div><div class="v sm" id="vMem">-</div></div>
+  <div class="stat">
+    <div class="k">实时速率</div>
+    <div class="v sm" style="display:flex;align-items:center;gap:7px">
+      <span id="vRate">-</span>
+      <div class="spark" id="spark"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════ ③ 节点 + ④ 订阅 ════ -->
+<div class="grid g2" style="align-items:start;gap:14px">
+
+  <!-- 节点面板 -->
+  <div class="card">
+    <div class="card-h">
+      <h2>节点与策略组</h2>
+      <button class="btn sm" id="btnTestAll">⚡ 全部测速</button>
+      <button class="btn sm" id="btnProbe">🎯 自动选最快</button>
+      <button class="btn sm" id="btnGuard" title="每 3 分钟用真实流量检测当前节点，断了自动切到能用的">🛡 自动守护</button>
+      <span id="guardTip" class="hint" style="margin-left:4px"></span>
+    </div>
+    <div id="groups"><div class="hint" style="padding:14px 0;text-align:center">加载中…</div></div>
+  </div>
+
+  <!-- 订阅 -->
+  <div class="card">
+    <div class="card-h">
+      <h2>订阅与更新</h2>
+      <span class="hint" id="provTime"></span>
+    </div>
+
+    <!-- 流量环 -->
+    <div style="display:flex;gap:18px;align-items:center;margin-bottom:14px">
+      <div class="ring">
+        <svg width="104" height="104">
+          <circle cx="52" cy="52" r="45" stroke="#2a3040" stroke-width="9" fill="none"/>
+          <circle id="ringArc" cx="52" cy="52" r="45" stroke="url(#g1)" stroke-width="9"
+            fill="none" stroke-linecap="round" stroke-dasharray="283" stroke-dashoffset="283"/>
+          <defs><linearGradient id="g1" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#3ecf8e"/><stop offset="100%" stop-color="#f0b429"/>
+          </linearGradient></defs>
+        </svg>
+        <div class="lbl"><b id="vPct">0%</b><small>已用</small></div>
+      </div>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:550;margin-bottom:2px" id="scName">-</div>
+        <div class="hint mono" id="scHost" style="word-break:break-all">-</div>
+        <div style="margin-top:9px;font-size:12.5px">
+          <span class="hint">已用</span> <b id="scUsed">-</b>
+          <span class="hint">/</span> <span id="scTotal">-</span>
+        </div>
+        <div style="font-size:12.5px;margin-top:3px">
+          <span class="hint">到期</span> <b id="scExpire">-</b>
+        </div>
+      </div>
+    </div>
+
+    <!-- 订阅输入 -->
+    <div style="display:flex;gap:8px">
+      <div class="urlwrap">
+        <input id="urlInput" type="text" placeholder="输入新订阅链接（留空则拉取当前订阅）">
+        <button class="copy" id="btnCopy" title="复制当前链接">⧉</button>
+      </div>
+      <button class="btn primary" id="btnUpdate2">拉取</button>
+    </div>
+    <div class="hint" style="margin-top:7px">
+      💡 平時无需操作 —— mihomo 每小时自动更新；「立即拉取」用于换订阅马上生效。
+    </div>
+
+    <!-- 更新日志 -->
+    <div style="margin-top:11px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+        <span class="hint" style="margin-right:auto">更新日志</span>
+        <span class="hint" id="updTime"></span>
+      </div>
+      <div class="logbox" id="updLog"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════ ⑤ 连接 + 日志 ════════ -->
+<div class="card">
+  <div class="card-h">
+    <h2>实时连接与日志</h2>
+    <span class="hint" id="connInfo"></span>
+    <button class="btn sm" id="btnClearConns">⨯ 断开全部</button>
+  </div>
+  <div class="tabs">
+    <div class="tab on" data-t="conns">连接 (<span id="cCount">0</span>)</div>
+    <div class="tab" data-t="logs">实时日志</div>
+    <div class="tab" data-t="rules">规则 (<span id="rCount">0</span>)</div>
+  </div>
+
+  <div id="tab-conns">
+    <div class="scroll">
+      <table class="tbl">
+        <thead><tr>
+          <th>目标</th><th>进程</th><th>命中规则</th><th>实际节点</th>
+          <th class="num">下行</th><th class="num">上行</th><th></th>
+        </tr></thead>
+        <tbody id="connBody">
+          <tr><td colspan="7" class="hint" style="text-align:center;padding:22px">暂无连接</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="tab-logs" class="hide">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:7px">
+      <span class="hint" style="margin-right:auto">实时推送（来自 mihomo <code>/logs</code>）</span>
+      <select class="sel" id="logLevel" style="padding:4px 8px;font-size:12px">
+        <option value="info">info</option>
+        <option value="warning">warning</option>
+        <option value="error">error</option>
+        <option value="debug">debug</option>
+      </select>
+      <button class="btn sm" id="btnLogClear">清空</button>
+    </div>
+    <div class="logbox" id="logBox"></div>
+  </div>
+
+  <div id="tab-rules" class="hide">
+    <div class="scroll" style="max-height:340px">
+      <table class="tbl">
+        <thead><tr><th>类型</th><th>内容</th><th>去向</th></tr></thead>
+        <tbody id="ruleBody"><tr><td colspan="3" class="hint" style="text-align:center;padding:22px">加载中…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ════════ ⑥ 使用说明 ════════ -->
+<div class="card">
+  <div class="card-h"><h2>📖 使用说明</h2><span class="hint">Everything you need, 不用再翻别的页面</span></div>
+
+  <details open>
+    <summary>① 怎么让设备走代理（最常用）</summary>
+    <div class="dbody">
+      <p style="margin-bottom:8px">在<b>手机 / 电脑</b>的网络设置里填代理地址即可，NAS 侧不用改任何东西。</p>
+      <table>
+        <tr><th>设备</th><th>在哪填</th><th>怎么填</th></tr>
+        <tr><td>Windows</td><td>设置 → 网络和 Internet → 代理</td><td><code>192.168.3.3</code> 端口 <code>7890</code></td></tr>
+        <tr><td>安卓</td><td>Wi-Fi 长按 → 修改网络 → 高级 → 代理</td><td>主机 <code>192.168.3.3</code> 端口 <code>7890</code></td></tr>
+        <tr><td>iPhone</td><td>Wi-Fi → ⓘ → 配置代理 → 手动</td><td>服务器 <code>192.168.3.3</code> 端口 <code>7890</code></td></tr>
+        <tr><td>浏览器</td><td>装 SwitchyOmega 扩展</td><td>选 HTTP 代理，填 <code>192.168.3.3:7890</code></td></tr>
+      </table>
+      <h4>SOCKS5 专用</h4>
+      <p>需要 SOCKS 协议时（比如某些游戏客户端、Git）用端口 <code>7891</code>。</p>
+      <h4>验证是否生效</h4>
+      <p>填好后访问 <code>ip138.com</code> 或 <code>ip.sb</code>，如果显示日本/美国 IP 就成功了。
+      若还是国内 IP，看下面「排错」。</p>
+    </div>
+  </details>
+
+  <details>
+    <summary>② 各个端口都是干什么的</summary>
+    <div class="dbody">
+      <table>
+        <tr><th>端口</th><th>用途</th><th>谁来用</th></tr>
+        <tr><td><code>7890</code></td><td>HTTP / SOCKS5 混合代理</td><td>你的电脑 / 手机 / 电视盒子</td></tr>
+        <tr><td><code>7891</code></td><td>纯 SOCKS5 代理</td><td>只支持 SOCKS 的软件</td></tr>
+        <tr><td><code>8090</code></td><td><b>本控制台</b>（说明+控制+状态）</td><td>浏览器</td></tr>
+        <tr><td><code>9090</code></td><td>mihomo 原生面板（备用）</td><td>需要看详细日志时</td></tr>
+      </table>
+      <h4>为什么有两个网页面板</h4>
+      <p><code>9090</code> 是 mihomo 自带的 metacubexd，<b>只能看不能改订阅</b>。
+      <code>8090</code> 是本页面，<b>能更新订阅、能启停容器</b>。日常用 8090 就够了，
+      右上角有「备用面板」链接。</p>
+    </div>
+  </details>
+
+  <details>
+    <summary>③ NAS 上的软件要走代理吗？（重要）</summary>
+    <div class="dbody">
+      <p style="margin-bottom:8px"><b>默认不走</b>。mihomo 是个「等待接入」的服务，不是全局接管。
+      任何软件都得自己配置代理才会走。</p>
+      <h4>实测证据</h4>
+      <ul>
+        <li>NAS 宿主机<b>没有</b>任何 <code>http_proxy</code> 环境变量</li>
+        <li>NAS 直连 google.com <b>超时</b>，走 <code>7890</code> 才通 → NAS 本身不在代理里</li>
+      </ul>
+      <h4>让某个软件走代理的3 种办法</h4>
+      <ul>
+        <li><b>环境变量</b>（适合命令行 / 容器）：
+          <code>export https_proxy=http://192.168.3.3:7890</code>
+          Docker 里在 <code>docker-compose.yaml</code> 加 <code>environment:</code> 同名变量</li>
+        <li><b>软件自带设置</b>：qBittorrent 等下载器在设置里填代理地址</li>
+        <li><b>给 git 单独配</b>：<code>git config --global http.proxy http://192.168.3.3:7890</code></li>
+      </ul>
+      <h4>哪些该接、哪些别接</h4>
+      <table>
+        <tr><th>软件</th><th>建议</th><th>原因</th></tr>
+        <tr><td>qBittorrent</td><td style="color:var(--red)">别接</td><td>BT 流量走代理会跑满机场、易封号</td></tr>
+        <tr><td>Emby / 影音</td><td style="color:var(--red)">别接</td><td>局域网播放不需要</td></tr>
+        <tr><td>nas-tool刮削</td><td style="color:var(--green)">建议接</td><td>解决刮削失败、图片拉不到</td></tr>
+        <tr><td>MoviePilot</td><td style="color:var(--green)">建议接</td><td>媒体信息源需要外网</td></tr>
+        <tr><td>Git 拉 GitHub</td><td style="color:var(--green)">建议接</td><td>这就是做代理的初衷</td></tr>
+      </table>
+      <div class="logbox" style="margin-top:8px">⚠️ 容器里不能用 127.0.0.1，要用 <code>192.168.3.3</code>（容器内的 127.0.0.1 是容器自己）</div>
+    </div>
+  </details>
+
+  <details>
+    <summary>④ 节点掉线了怎么办</summary>
+    <div class="dbody">
+      <p>免费机场的节点经常挂，这是常态。<b>本setup 已经有自愈机制</b>：</p>
+      <ul>
+        <li><code>♻️ 自动选择</code> 组是 <code>url-test</code> 类型，<b>每5 分钟自动测速</b>，
+        掉了会自动切到最快的可用节点 —— 你什么都不用做</li>
+        <li>想让主组也走自动：点 <code>🔰 选择节点</code> → 选 <code>♻️ 自动选择</code></li>
+      </ul>
+      <h4>手动干预</h4>
+      <ul>
+        <li><b>⚡ 全部测速</b>：一次性测所有节点延迟，绿的可用</li>
+        <li><b>🎯 自动选最快</b>：跑脚本探测并把主组切到最快节点</li>
+        <li><b>⚡ 刷新订阅</b>：只重新拉一次订阅，几秒完成，不改配置</li>
+        <li><b>🛡 自动守护</b>：每 3 分钟用<b>真实流量</b>检测当前节点，
+            断了自动切到可用节点（推荐开着）</li>
+        <li>或者直接点某个节点名字即可切换</li>
+      </ul>
+      <h4>为什么测速绿灯但还是打不开？</h4>
+      <p>「全部测速」打的是 <code>generate_204</code> 这种空响应，
+      只能证明<b>隧道建立成功 + 收到 1 个字节</b>，不验证 TLS 握手和真实传输。
+      节点可能出现「延迟 150ms 绿灯，但 google / github 全打不开」。
+      <br><br>
+      <b>🛡 自动守护</b>用的是真实 HTTPS 请求（google + cloudflare），
+      页面上会标出 <b>✅ 实测通</b> / <b>❌ 实测不通</b>，这个才准。
+      免费机场节点经常时好时坏，建议常开。</p>
+      <h4>接不上某个节点怎么办</h4>
+      <p>本setup 里节点域名走了强制直连解析（<code>nameserver-policy</code>）。
+      如果机场换了域名导致全超时，需要更新那个列表——但当前用的是
+      通配符 <code>+.entry.example.com</code>（换成你机场的节点域名），一般能自动扛住换域名。</p>
+      <h4>为什么默认不自动选？</h4>
+      <p>默认走 <code>🔰 选择节点</code>（手动），不是 <code>♻️ 自动选择</code>。原因：</p>
+      <p><code>url-test</code> 在<b>全部节点都挂</b>时会退化成选列表第一个节点，
+      而那个通常也是挂的 —— 实测会导致 github / google 直接报
+      <code>error: xxx-node</code>，整条链路失效，但界面看起来一切正常（很难排查）。</p>
+      <p>想要自动切换就在上面点 <code>♻️ 自动选择</code> 组里的节点即可；
+      只要有一个节点活着，自动组就能正常工作。</p>
+    </div>
+  </details>
+
+  <details>
+    <summary>⑤ 订阅和流量</summary>
+    <div class="dbody">
+      <h4>平时需要做什么</h4>
+      <p><b>什么都不用做。</b> mihomo 每小时（<code>interval: 3600</code>）自动拉一次订阅，
+      <code>♻️ 自动选择</code> 每5 分钟自动测速切节点。</p>
+      <h4>什么时候要点「立即拉取」</h4>
+      <ul>
+        <li><b>换了订阅链接</b> → 在输入框粘贴新链接 → 点「拉取」</li>
+        <li><b>机场临时加了新节点</b> → 等不及一小时，点一下立即生效</li>
+      </ul>
+      <h4>流量看什么</h4>
+      <p>左上角圆环是<b>机场流量</b>（机场侧统计），和节点实际消耗一致。
+      「实时速率」是 NAS 当前的总上传/下载速度。</p>
+      <h4>流量用完了</h4>
+      <p>换一家机场，然后在上方输入框填新订阅链接点「拉取」。</p>
+    </div>
+  </details>
+
+  <details>
+    <summary>⑥ 排错</summary>
+    <div class="dbody">
+      <table>
+        <tr><th>现象</th><th>原因 &amp; 解决</th></tr>
+        <tr>
+          <td>设备填了代理但没网</td>
+          <td>看顶栏容器是否 <span class="dot on" style="margin:0 4px"></span>运行中；
+          停止状态下 7890 端口不存在。先点「▶ 启动」</td>
+        </tr>
+        <tr>
+          <td>全部节点超时</td>
+          <td>先点「⚡ 全部测速」。全红 = 机场侧问题或本地网络问题，
+          不是本页面故障；先重启容器试试</td>
+        </tr>
+        <tr>
+          <td>页面打不开</td>
+          <td>确认地址是 <code>http://192.168.3.3:8090/</code>，
+          <b>不要用</b> <code>127.0.0.1</code>（那是你自己电脑）</td>
+        </tr>
+        <tr>
+          <td>点了没反应</td>
+          <td>看「实时日志」标签页，mihomo 会把错误原因推给你</td>
+        </tr>
+        <tr>
+          <td>点测速全是"超时"但代理其实能用</td>
+          <td>老版本现象。当前已改为用 Cloudflare 的 204 测速（gstatic 在
+          部分机场节点上会404）。若仍全超时，多半是机场侧拥堵，等几分钟再试</td>
+        </tr>
+        <tr>
+          <td>国内网站也变慢</td>
+          <td>模式被切到「全局」了 → 切回「规则」</td>
+        </tr>
+        <tr>
+          <td>广告没被拦</td>
+          <td>确认「🛑 拦截广告」组指向 <code>REJECT</code>，模式为「规则」</td>
+        </tr>
+      </table>
+      <h4>看更多细节</h4>
+      <p>点右上角「备用面板 ↗」进入 metacubexd，能看到完整的规则命中和日志。</p>
+    </div>
+  </details>
+
+  <details>
+    <summary>⑦ 这个页面是怎么工作的（架构）</summary>
+    <div class="dbody">
+      <h4>数据来源</h4>
+      <ul>
+        <li><b>mihomo RESTful API</b>（<code>9090</code>）：节点、连接、规则、日志</li>
+        <li><b>本页面后端</b>（<code>8090</code>，Python 标准库）：订阅信息 +转发所有控制指令</li>
+      </ul>
+      <h4>为什么需要后端转发</h4>
+      <p>浏览器有跨域限制，且订阅流量信息在机场的响应头里、启停容器要调 docker 命令，
+      都不能纯前端完成。</p>
+      <h4>服务管理</h4>
+      <p>本页面由 systemd 托管：<code>sudo systemctl restart sub-panel</code>
+      重启服务，<code>sudo systemctl status sub-panel</code> 看状态。已设开机自启。</p>
+      <h4>能做什么、不能做什么</h4>
+      <p>✅ 切节点、切模式、启停容器、更新订阅、看连接与日志<br>
+      ❌ <b>不能在网页上新增/编辑节点</b> —— mihomo 的 API 是只读的，没有写节点的接口。
+      要加节点得手动改 <code>config/providers/local.yaml</code>。</p>
+    </div>
+  </details>
+</div>
+
+<div class="hint" style="text-align:center;padding:20px 0">
+  design by Frank &nbsp;·&nbsp; NAS <code>192.168.3.3</code>
+</div>
+
+</div><!-- /wrap -->
+
+<!-- ════════ 弹窗 ════════ -->
+<div id="mask">
+  <div class="modal">
+    <h3 id="mTitle">确认</h3>
+    <p id="mBody"></p>
+    <div class="acts">
+      <button class="btn" id="mNo">取消</button>
+      <button class="btn primary" id="mYes">确定</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function toast(msg, kind = '') {
+  const d = document.createElement('div');
+  d.className = 'tst ' + kind;
+  d.textContent = msg;
+  $('toast').appendChild(d);
+  setTimeout(() => d.remove(), 3200);
+}
+
+function confirmBox(title, body) {
+  return new Promise(res => {
+    $('mTitle').textContent = title;
+    $('mBody').textContent = body;
+    $('mask').classList.add('on');
+    const yes = $('mYes'), no = $('mNo');
+    const done = v => {
+      $('mask').classList.remove('on');
+      yes.onclick = null; no.onclick = null;
+      document.removeEventListener('keydown', esc2);
+      res(v);
+    };
+    const esc2 = e => { if (e.key === 'Escape') done(false); };
+    yes.onclick = () => done(true);
+    no.onclick  = () => done(false);
+    document.addEventListener('keydown', esc2);
+  });
+}
+
+async function api(path, opt) {
+  const r = await fetch(path, opt);
+  const txt = await r.text();
+  let d; try { d = JSON.parse(txt); } catch(e) { d = { error: txt.slice(0,200) }; }
+  if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+  return d;
+}
+const post = (p, b) => api(p, {
+  method: 'POST',
+  headers: {'Content-Type':'application/json'},
+  body: JSON.stringify(b || {})
+});
+const del = p => api(p, { method: 'DELETE' });
+
+/* ══════════ 状态 ══════════ */
+let ST = {};
+const rateHist = [];
+
+async function loadStatus() {
+  try {
+    const d = await api('/api/status');
+    ST = d;
+    const running = /Up/i.test(d.container || '');
+
+    $('dCt').className = 'dot ' + (running ? 'on' : 'off');
+    $('tCt').textContent  = d.container || '-';
+    $('tCore').textContent = d.core && d.core !== '?' ? 'mihomo ' + d.core : 'mihomo ?';
+    $('tArch').textContent = d.arch === 'provider' ? '自动更新已启用' : '手动模式';
+    $('tNodes').textContent = (d.nodes ?? '-') + ' 节点';
+
+    $('vMode').textContent = ({rule:'规则模式',global:'全局模式',direct:'直连模式'})[d.mode] || d.mode || '-';
+    $('vNow').textContent  = d.current_node || '（未选择）';
+    $('vGroups').textContent = d.groups ?? '-';
+    $('vRules').textContent = (d.ruleset_lines ? (d.ruleset_lines + '+') : '') + (d.rules ?? 0);
+
+    document.querySelectorAll('#modeSeg button')
+      .forEach(b => b.classList.toggle('on', b.dataset.m === d.mode));
+
+    // 启停按钮状态
+    $('btnStart').disabled = running;
+    $('btnStop').disabled = !running;
+    $('btnRestart').disabled = !running;
+
+    // 订阅
+    $('vPct').textContent = (d.used_pct ?? 0) + '%';
+    const circ = 2 * Math.PI * 45;
+    $('ringArc').setAttribute('stroke-dashoffset', String(circ * (1 - (d.used_pct||0)/100)));
+    $('scName').textContent = d.filename || '未配置订阅';
+    $('scHost').textContent = d.sub_host || '(无订阅链接)';
+    $('scUsed').textContent = d.used || '-';
+    $('scTotal').textContent = d.total || '-';
+    $('scExpire').textContent = d.expire || '-';
+    $('provTime').textContent = d.prov_updated ? '节点更新于 ' + d.prov_updated : '';
+    $('urlInput').placeholder = d.sub_url ? d.sub_url : '输入新订阅链接';
+    if (!userTouched) $('urlInput').value = d.sub_url || '';
+    $('btnUpdate2').disabled = d.arch !== 'provider' ? false : false;
+
+    // 守护状态：同步开关样式 + 实测可用集合
+    GUARD_ALIVE = new Set(d.guard_alive || []);
+    GUARD_CHECKED = d.guard_checked || null;
+    const gb = $('btnGuard');
+    if (gb) {
+      gb.classList.toggle('primary', !!d.guard_on);
+      gb.textContent = d.guard_on ? '🛡 守护已开' : '🛡 自动守护';
+    }
+    const gt = $('guardTip');
+    if (gt) {
+      gt.textContent = d.guard_checked
+        ? `实测可用 ${GUARD_ALIVE.size} 个 · ${new Date(d.guard_checked * 1000).toLocaleTimeString('zh-CN', {hour12: false})}`
+        : (d.guard_on ? '正在检测…' : '');
+    }
+  } catch (e) {
+    $('dCt').className = 'dot off';
+    $('tCt').textContent = '控制台后端无响应';
+  }
+}
+
+/* ══════════ 速率 ══════════ */
+async function loadTraffic() {
+  try {
+    const t = await api('/api/traffic');
+    const up = t.up || 0, down = t.down || 0;
+    $('vRate').textContent = fmtRate(down) + '↓ ' + fmtRate(up) + '↑';
+    $('vMem').textContent = t.memory ? (t.memory / 1048576).toFixed(0) + ' MB' : '-';
+    rateHist.push(down + up);
+    if (rateHist.length > 22) rateHist.shift();
+    const mx = Math.max(...rateHist, 1024);
+    $('spark').innerHTML = rateHist.map(v =>
+      `<i style="height:${Math.max(2, v / mx * 100)}%"></i>`).join('');
+  } catch(e) {}
+}
+function fmtRate(b) {
+  if (!b) return '0';
+  if (b < 1024) return b.toFixed(0) + 'B';
+  if (b < 1048576) return (b/1024).toFixed(1) + 'K';
+  if (b < 1073741824) return (b/1048576).toFixed(1) + 'M';
+  return (b/1073741824).toFixed(2) + 'G';
+}
+function fmtSize(b) {
+  b = b || 0;
+  if (b < 1024) return b + ' B';
+  if (b < 1048576) return (b/1024).toFixed(1) + ' KB';
+  if (b < 1073741824) return (b/1048576).toFixed(1) + ' MB';
+  return (b/1073741824).toFixed(2) + ' GB';
+}
+
+/* ══════════ 节点面板 ══════════ */
+let TREE = null;
+const openState = {};
+
+async function loadProxies() {
+  try {
+    const d = await api('/api/proxies');
+    TREE = d;
+    renderGroups();
+  } catch(e) {
+    $('groups').innerHTML = `<div class="hint" style="padding:14px 0;text-align:center;color:var(--red)">加载失败：${esc(e.message)}<br>（容器可能已停止，点上方「▶ 启动」）</div>`;
+  }
+}
+
+function renderGroups() {
+  if (!TREE) return;
+  const box = $('groups');
+  if (!TREE.groups.length) {
+    box.innerHTML = '<div class="hint" style="padding:14px 0;text-align:center">无策略组</div>';
+    return;
+  }
+  box.innerHTML = TREE.groups.map(g => {
+    const isOpen = openState[g.name] ?? (g.name.includes('选择节点') || g.name === 'GLOBAL');
+    const typeTag = g.type === 'URLTest' ? '自动测速'
+                  : g.type === 'Selector' ? '手动' : g.type;
+    const nodes = g.members.map(m => {
+      const isSel = m.name === g.now;
+      const dt = DELAYS[m.name];
+      const dtTxt = dt === undefined ? ''
+        : dt === null ? '<span class="dt bad">超时</span>'
+        : `<span class="dt ${dt < 300 ? 'ok' : ''}">${dt} ms</span>`;
+      // 守护的"实测可用"标记：只在守护开过且测过该节点时显示。
+      // 测速（延迟）只验隧道+1字节，真实可用要打完整 HTTPS 请求。
+      const alive = GUARD_ALIVE.has(m.name) ? true
+        : (GUARD_CHECKED && GUARD_ALIVE.size) ? false : null;
+      const liveTxt = alive === null ? ''
+        : alive ? '<span class="dt ok" title="真实流量实测可用">✅ 实测通</span>'
+                : '<span class="dt bad" title="真实流量实测失败">❌ 实测不通</span>';
+      return `<div class="node kind-${m.kind} ${isSel ? 'sel' : ''}"
+                   data-group="${esc(g.name)}" data-node="${esc(m.name)}">
+        <span class="nm">${isSel ? '✓ ' : ''}${esc(m.name)}</span>
+        ${m.kind !== 'NODE' ? `<span class="tag">${m.kind === 'GROUP' ? '组' : '出口'}</span>` : ''}
+        ${liveTxt}
+        ${dtTxt}
+      </div>`;
+    }).join('');
+    return `<div class="grp ${isOpen ? 'open' : ''}" data-grp="${esc(g.name)}">
+      <div class="grp-h">
+        <span class="caret">▶</span>
+        <span class="nm">${esc(g.name)}</span>
+        <span class="badge">${typeTag}</span>
+        <span class="now">${esc(g.now || '-')}</span>
+      </div>
+      <div class="grp-b">${nodes || '<div class="hint" style="padding:6px">无成员</div>'}</div>
+    </div>`;
+  }).join('');
+
+  box.querySelectorAll('.grp-h').forEach(h =>
+    h.onclick = () => {
+      const g = h.parentElement;
+      const nm = g.dataset.grp;
+      g.classList.toggle('open');
+      openState[nm] = g.classList.contains('open');
+    });
+  box.querySelectorAll('.node').forEach(n => n.onclick = () => selectNode(n.dataset.group, n.dataset.node));
+}
+
+async function selectNode(group, name) {
+  try {
+    await post('/api/select', { group, name });
+    toast(`已切到 ${name}`, 'ok');
+    await loadProxies();
+    await loadStatus();
+  } catch(e) { toast('切换失败：' + e.message, 'bad'); }
+}
+
+/* 延迟缓存：{节点名: ms | null}，null = 测过但超时 */
+const DELAYS = {};
+const TESTED = new Set();
+
+/* 守护状态：真实流量实测可用的节点集合（与 DELAYS 的延迟测速不同）
+   延迟测速只验"隧道建立 + 收到 1 字节"，实测会打完整 HTTPS 请求。 */
+let GUARD_ALIVE = new Set();
+let GUARD_CHECKED = null;
+
+async function testGroup(gname) {
+  try {
+    const d = await api('/api/delay?group=' + encodeURIComponent(gname));
+    const got = d.delays || {};
+    // mihomo 组级测速只返回**存活**成员，没返回的就是挂了。
+    // 标记本次测过的组，这样未返回的节点能正确显示"超时"。
+    TESTED.add(gname);
+    Object.keys(got).forEach(k => DELAYS[k] = got[k]);
+    return got;
+  } catch(e) { return {}; }
+}
+
+async function testAll() {
+  const btn = $('btnTestAll');
+  btn.disabled = true;
+  btn.textContent = '测速中…';
+  if (!TREE) { btn.disabled = false; btn.textContent = '⚡ 全部测速'; return; }
+  // 选成员最多的组（通常是主选择组），一次拿到所有节点延迟
+  const g = TREE.groups.slice().sort((a,b) =>
+    b.members.filter(m=>m.kind==='NODE').length - a.members.filter(m=>m.kind==='NODE').length)[0];
+  const nodes = g.members.filter(m => m.kind === 'NODE' && m.name !== '占位-直连');
+  toast(`正在测速「${g.name}」的 ${nodes.length} 个节点…`);
+  await testGroup(g.name);
+  // 未返回的节点 = 超时，显式置 null 以便显示
+  nodes.forEach(m => { if (!(m.name in DELAYS)) DELAYS[m.name] = null; });
+  renderGroups();
+  btn.disabled = false;
+  btn.textContent = '⚡ 全部测速';
+  const ok = nodes.filter(m => DELAYS[m.name] !== null).length;
+  if (!ok) {
+    toast(`${ok}/${nodes.length} 可用 —— 可能机场侧拥堵，稍后重试`, 'bad');
+  } else {
+    const alive = nodes.filter(m => DELAYS[m.name] !== null)
+      .sort((a,b) => DELAYS[a.name] - DELAYS[b.name]);
+    toast(`${ok}/${nodes.length} 可用 · 最快 ${alive[0].name.replace(/🇯🇵 免费-/,'')} ${DELAYS[alive[0].name]}ms`, 'ok');
+  }
+}
+
+/* ══════════ 连接 ══════════ */
+let connTimer = null;
+async function loadConns() {
+  try {
+    const d = await api('/api/connections');
+    const tb = $('connBody');
+    $('cCount').textContent = d.total;
+    $('connInfo').textContent = d.total
+      ? `${d.total} 个连接 · 累计 ↓${fmtSize(d.downloadTotal)} ↑${fmtSize(d.uploadTotal)}`
+      : '';
+    if (!d.connections.length) {
+      tb.innerHTML = '<tr><td colspan="7" class="hint" style="text-align:center;padding:22px">暂无连接<br><span style="font-size:11.5px">（有设备走代理时这里会实时显示）</span></td></tr>';
+      return;
+    }
+    tb.innerHTML = d.connections.map(c => `<tr>
+      <td><div style="max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(c.host)}">${esc(c.host)}</div>
+          <div class="hint mono">${esc(c.dst)}${c.port ? ':' + esc(c.port) : ''}</div></td>
+      <td><div class="hint" style="max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.proc ? c.proc.split('/').pop() : '—')}</div></td>
+      <td><span class="pill">${esc(c.rule)}</span><div class="hint" style="max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.rule_payload || '')}</div></td>
+      <td><span class="pill p">${esc(c.node || '—')}</span></td>
+      <td class="num">${fmtSize(c.down)}</td>
+      <td class="num">${fmtSize(c.up)}</td>
+      <td><button class="btn sm bad" data-close="${esc(c.id)}">断</button></td>
+    </tr>`).join('');
+    tb.querySelectorAll('[data-close]').forEach(b => b.onclick = async () => {
+      try { await del('/api/connections/' + encodeURIComponent(b.dataset.close));
+            loadConns(); } catch(e) { toast('断开失败', 'bad'); }
+    });
+  } catch(e) { /* 容器停止时会失败，忽略 */ }
+}
+
+/* ══════════ 规则 ══════════ */
+async function loadRules() {
+  try {
+    const d = await api('/api/rules');
+    $('rCount').textContent = d.rules.length;
+    $('ruleBody').innerHTML = d.rules.map(r => `<tr>
+      <td><span class="pill">${esc(r.type)}</span></td>
+      <td class="mono" style="max-width:380px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.payload)}</td>
+      <td>${esc(r.proxy)}</td></tr>`).join('');
+  } catch(e) {
+    $('ruleBody').innerHTML = '<tr><td colspan="3" class="hint" style="text-align:center;padding:22px">加载失败</td></tr>';
+  }
+}
+
+/* ══════════ 实时日志（SSE）══════════ */
+let es = null;
+function startLogs() {
+  stopLogs();
+  const lv = $('logLevel').value;
+  es = new EventSource('/api/logs/stream?level=' + lv);
+  es.onmessage = ev => {
+    let d; try { d = JSON.parse(ev.data); } catch(e) { return; }
+    appendLog(d.type, d.payload);
+  };
+  es.onerror = () => { /* EventSource 会自己重连 */ };
+}
+function stopLogs() { if (es) { es.close(); es = null; } }
+function appendLog(type, payload) {
+  const box = $('logBox');
+  const stick = box.scrollTop + box.clientHeight >= box.scrollHeight - 30;
+  const div = document.createElement('div');
+  div.className = type;
+  const ts = new Date().toTimeString().slice(0, 8);
+  div.textContent = `${ts}  ${payload}`;
+  box.appendChild(div);
+  while (box.children.length > 400) box.firstChild.remove();
+  if (stick) box.scrollTop = box.scrollHeight;
+}
+
+/* ══════════ 订阅更新 ══════════ */
+let userTouched = false, updPolling = null;
+$('urlInput').addEventListener('input', () => userTouched = true);
+
+async function startUpdate() {
+  const url = $('urlInput').value.trim();
+  if (url && !/^https?:\/\//i.test(url)) { toast('链接必须以 http:// 或 https:// 开头', 'bad'); return; }
+  if (url) {
+    if (!await confirmBox('更换订阅链接？',
+        `新链接：\n${url}\n\n将立即拉取并生效，同时写入 sub.txt 备份。`)) return;
+  }
+  const btns = [$('btnUpdate'), $('btnUpdate2')];
+  btns.forEach(b => { b.disabled = true; b.textContent = '⟳ 拉取中…'; });
+  try {
+    await post('/api/update', { url: url || null });
+    toast('更新已启动', 'ok');
+    userTouched = false;
+    pollUpd();
+  } catch(e) { toast('启动失败：' + e.message, 'bad'); }
+  btns.forEach(b => { b.disabled = false; b.textContent = '⟳ 立即拉取订阅'; });
+  $('btnUpdate2').textContent = '拉取';
+}
+
+async function pollUpd() {
+  clearInterval(updPolling);
+  updPolling = setInterval(async () => {
+    let d;
+    try { d = await api('/api/log'); } catch(e) { return; }
+    $('updLog').innerHTML = d.log.slice(-60)
+      .map(l => `<div>${esc(l)}</div>`).join('');
+    $('updLog').scrollTop = $('updLog').scrollHeight;
+    if (d.last_time) $('updTime').textContent = '上次：' + d.last_time;
+    if (!d.running && d.last_result) {
+      clearInterval(updPolling);
+      toast(d.last_result === 'success' ? '订阅更新完成' : '订阅更新失败',
+            d.last_result === 'success' ? 'ok' : 'bad');
+      await loadStatus();
+      await loadProxies();
+    }
+  }, 1500);
+}
+
+/* ══════════ 事件绑定 ══════════ */
+// 模式
+document.querySelectorAll('#modeSeg button').forEach(b => b.onclick = async () => {
+  const m = b.dataset.m;
+  if (!await confirmBox('切换运行模式？',
+    `从「${$('vMode').textContent}」切到「${({rule:'规则',global:'全局',direct:'直连'})[m]}」\n\n` +
+    ({rule:'国内直连、国外走代理（推荐）',global:'所有流量都走代理',direct:'所有流量都不走代理'})[m])) return;
+  try { await post('/api/mode', { mode: m }); toast('模式已切换', 'ok'); loadStatus(); }
+  catch(e) { toast('切换失败：' + e.message, 'bad'); }
+});
+
+// 启停
+$('btnStart').onclick = async () => {
+  try { await post('/api/container/start'); toast('容器已启动', 'ok'); }
+  catch(e) { toast('启动失败：' + e.message, 'bad'); }
+  setTimeout(() => { loadStatus(); loadProxies(); }, 8000);
+};
+$('btnStop').onclick = async () => {
+  if (!await confirmBox('停止代理服务？',
+    '停止后：\n• 7890 / 7891 端口消失\n• 所有走代理的设备立即断网\n\n确认停止？')) return;
+  try { await post('/api/container/stop'); toast('容器已停止', 'ok'); }
+  catch(e) { toast('停止失败：' + e.message, 'bad'); }
+  setTimeout(() => { loadStatus(); loadProxies(); }, 3000);
+};
+$('btnRestart').onclick = async () => {
+  if (!await confirmBox('重启代理服务？', '会短暂中断约 20 秒，所有代理设备会断线重连。')) return;
+  try { await post('/api/container/restart'); toast('正在重启…', 'ok'); }
+  catch(e) { toast('重启失败：' + e.message, 'bad'); }
+  setTimeout(() => { loadStatus(); loadProxies(); }, 20000);
+};
+
+// 节点
+$('btnTestAll').onclick = testAll;
+$('btnProbe').onclick = async () => {
+  const btn = $('btnProbe');
+  btn.disabled = true; btn.textContent = '探测中…';
+  try { await post('/api/probe'); toast('已探测并切到最快节点', 'ok'); }
+  catch(e) { toast('探测失败：' + e.message, 'bad'); }
+  btn.disabled = false; btn.textContent = '🎯 自动选最快';
+  setTimeout(() => { loadProxies(); loadStatus(); }, 3000);
+};
+
+/* 手动刷新订阅：只拉一次 provider，几秒完成，不改配置 */
+$('btnRefresh').onclick = async () => {
+  const btn = $('btnRefresh');
+  btn.disabled = true; btn.textContent = '刷新中…';
+  try { await post('/api/refresh'); toast('正在刷新订阅…', 'ok'); }
+  catch(e) { toast('刷新失败：' + e.message, 'bad'); }
+  btn.disabled = false; btn.textContent = '⚡ 刷新订阅';
+  setTimeout(() => { loadProxies(); loadStatus(); }, 8000);
+};
+
+/* 自动守护：每 3 分钟真实流量检测，断了自动切 */
+$('btnGuard').onclick = async () => {
+  const btn = $('btnGuard');
+  const on = btn.classList.contains('primary');
+  if (!on && !await confirmBox('开启自动守护？',
+      '每 3 分钟用真实流量检测当前节点，断了自动切到可用节点。\n\n机场免费节点经常时好时坏，开启后可避免手动切换。')) return;
+  btn.disabled = true;
+  try {
+    const r = await post('/api/guard', { on: !on });
+    toast(r.on ? '守护已开启，正在检测…' : '守护已关闭', 'ok');
+  } catch(e) { toast('操作失败：' + e.message, 'bad'); }
+  btn.disabled = false;
+  setTimeout(() => { loadStatus(); loadProxies(); }, 2000);
+};
+
+// 订阅
+$('btnUpdate').onclick = startUpdate;
+$('btnUpdate2').onclick = startUpdate;
+$('urlInput').addEventListener('keydown', e => { if (e.key === 'Enter') startUpdate(); });
+$('btnCopy').onclick = async () => {
+  const v = $('urlInput').value;
+  if (!v) return toast('没有可复制的链接', 'bad');
+  try { await navigator.clipboard.writeText(v); toast('已复制', 'ok'); }
+  catch(e) { toast('复制失败，请手动选择', 'bad'); }
+};
+
+// 连接
+$('btnClearConns').onclick = async () => {
+  if (!await confirmBox('断开全部连接？',
+    '会强制掐断所有正在走代理的连接（下载、视频可能需要重试）。')) return;
+  try { await del('/api/connections'); toast('已断开全部连接', 'ok'); loadConns(); }
+  catch(e) { toast('断开失败：' + e.message, 'bad'); }
+};
+
+// Tab 切换
+document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
+  document.querySelectorAll('.tab').forEach(x => x.classList.toggle('on', x === t));
+  ['conns','logs','rules'].forEach(k =>
+    $('tab-' + k).classList.toggle('hide', k !== t.dataset.t));
+  if (t.dataset.t === 'rules') loadRules();
+  if (t.dataset.t === 'logs') startLogs(); else stopLogs();
+  if (t.dataset.t === 'conns' && !connTimer) { loadConns(); connTimer = setInterval(loadConns, 2500); }
+});
+$('logLevel').onchange = () => { if (!$('tab-logs').classList.contains('hide')) startLogs(); };
+$('btnLogClear').onclick = () => { $('logBox').innerHTML = ''; };
+
+// 备用面板兜底
+$('panelLink').href = location.protocol + '//' + location.hostname + ':9090/ui/';
+
+/* ══════════ 初始化 ══════════ */
+(async () => {
+  $('panelLink').href = location.protocol + '//' + location.hostname + ':9090/ui/';
+  await loadStatus();
+  await loadProxies();
+  loadTraffic(); setInterval(loadTraffic, 2000);
+  setInterval(loadStatus, 20000);
+  pollUpd();
+})();
+</script>
+</body>
+</html>

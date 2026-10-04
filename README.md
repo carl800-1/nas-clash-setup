@@ -227,7 +227,9 @@ export https_proxy=http://192.168.3.3:7890
 
 ### 换机场
 
-改 `config/config.yaml` 一行，然后回控制台点「重启」或命令行 `docker compose restart mihomo`：
+**三步，缺一步就会全超时：**
+
+**① 改订阅链接** —— 编辑 `config/config.yaml`：
 
 ```yaml
 proxy-providers:
@@ -235,10 +237,81 @@ proxy-providers:
     url: "https://新机场/新订阅路径?clash=1"
 ```
 
+**② 改 DNS 解析白名单** —— 不同机场的节点域名后缀不同，漏了就全挂：
+
+```bash
+# 先查新机场的节点域名
+curl -s "https://新机场订阅链接" | grep -oE 'server: [a-z0-9.-]+' | head -5
+```
+
+然后把 `dns.nameserver-policy` 里的域名后缀补全，**用通配符**：
+
+```yaml
+dns:
+  nameserver-policy:
+    '+.新机场域名后缀':      # 节点域名
+      - 223.5.5.5
+      - 119.29.29.29
+    '新机场订阅域名':         # 订阅接口域名
+      - 223.5.5.5
+      - 119.29.29.29
+```
+
+> 实测踩过：某机场节点域名是 `*.qpon`，而配置里只有 `*.fr0528.art`，
+> 结果换过去所有节点都超时。**换机场后先测一轮再判定可用**。
+
+**③ 重启并刷新**
+
+```bash
+sudo docker restart mihomo
+# 控制台点「⚡ 刷新订阅」，或：
+curl -X POST http://127.0.0.1:8090/api/refresh
+```
+
+### 验证换机场是否成功
+
+**别只看延迟数字**，要真实流量测试（免费/付费机场都可能骗人）：
+
+```bash
+# 20 次连续采样，看成功率和失败模式
+for i in $(seq 1 20); do
+  curl -x http://127.0.0.1:7890 -o /dev/null -s -w "%{http_code} " \
+       --max-time 20 https://www.google.com/
+  sleep 1.5
+done
+echo
+
+# 抓 <title> 确认真 HTML，不是空响应
+curl -x http://127.0.0.1:7890 -s --max-time 20 https://www.google.com/ | grep -o '<title>[^<]*</title>'
+
+# 验出口 IP 确实不是本地
+curl -x http://127.0.0.1:7890 -s --max-time 15 https://api.ipify.org
+```
+
+**实测参考**（同一台 NAS，同一时间）：
+
+| 机场 | 20 次采样 google 首页 | 结论 |
+|---|---|---|
+| iKuuu 免费（7 节点） | 最优 15/20，5 个节点 0/3 | 机场侧 AWS 实例 i/o timeout |
+| 付费 IEPL（47 节点） | 20/20，12/12，10/10 | 稳定 |
+
 ### 自动更新频率
 
 `interval: 3600`（每小时）。**不建议调更短** —— 免费机场域名动态轮换，
 但过于频繁的刷新反而容易触发限流。需要立即更新时点面板的「⚡ 刷新订阅」。
+
+### 自动守护该不该开
+
+**取决于节点池质量**：
+
+- **付费 / 多节点（推荐开）**：节点池大，守护切到哪个都能用
+- **免费 / 少节点（建议关）**：实测遇到过守护把主选择组切到 0/3 的死节点，
+  反而比自己手动选更差。这种情况手动锁定一个验证过的节点更稳
+
+```bash
+curl -X POST -d '{"on":false}' http://127.0.0.1:8090/api/guard   # 关
+curl -X POST -d '{"on":true}'  http://127.0.0.1:8090/api/guard   # 开
+```
 
 ---
 
@@ -299,6 +372,9 @@ proxy-providers:
 | DNS 解析死锁 | `nameserver` 只用 DoH，解析 DoH 域名本身要 DNS | 保留国内明文 DNS 打底 |
 | 国外域名被污染 | `fallback` 用了 cloudflare/google DoH（大陆被 reset） | 只用 `doh.pub` / `dns.alidns.com` |
 | 节点服务器域名解析失败 | 机场域名没走直连解析 | `nameserver-policy` 加通配符 `+.节点域名` |
+| **换机场后全部节点超时** | 新机场节点域名后缀不同（如 `*.qpon`），配置里只有旧的 | 见「换机场」第②步，`grep 'server:'` 查新后缀补进去 |
+| 延迟绿灯但 google 打不开 | 延迟只验隧道不验 TLS/带宽 | 跑 20 次真实采样；见「验证换机场是否成功」 |
+| 自动守护把节点切到死节点 | 守护探活与真实流量判定不一致 | 节点池 <5 个时关守护，手动锁定验证过的节点 |
 | 手动选的节点被冲回第一个 | mihomo 未启用 `store-selected` | 加 `store-selected: true` |
 | **所有流量直连、代理形同虚设** | `♻️ 自动选择` 组含 `local` 里的 `direct` 占位节点，延迟近 0 永远选它 | 自动组只 `use: [airport]` |
 | github/google 报 `error: xxx-node` | `🌐 代理` 默认用 url-test 组，全挂时退化成选第一个死节点 | 默认改用 `🔰 选择节点`（手动） |

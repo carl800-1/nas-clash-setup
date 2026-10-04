@@ -494,9 +494,13 @@ details[open] summary{border-bottom:1px solid var(--line)}
       页面上会标出 <b>✅ 实测通</b> / <b>❌ 实测不通</b>，这个才准。
       免费机场节点经常时好时坏，建议常开。</p>
       <h4>接不上某个节点怎么办</h4>
-      <p>本setup 里节点域名走了强制直连解析（<code>nameserver-policy</code>）。
-      如果机场换了域名导致全超时，需要更新那个列表——但当前用的是
-      通配符 <code>+.entry.example.com</code>（换成你机场的节点域名），一般能自动扛住换域名。</p>
+      <p>本 setup 里节点域名走了强制直连解析（<code>nameserver-policy</code>）。
+      换机场后如果<b>所有节点全超时</b>，八成是漏了新机场的节点域名后缀 ——
+      不同机场后缀不同（实测见过 <code>fr0528.art</code>、<code>qpon</code> 等）。</p>
+      <p>查当前节点域名：订阅链接里 <code>grep 'server:'</code>，
+      或直接看 <code>/volume1/docker/clash/config/config.yaml</code> 的
+      <code>dns.nameserver-policy</code>，把所有后缀都补进去。
+      用通配符（<code>+.域名后缀</code>）而不是完整域名，机场轮换子域名时才不会失效。</p>
       <h4>为什么默认不自动选？</h4>
       <p>默认走 <code>🔰 选择节点</code>（手动），不是 <code>♻️ 自动选择</code>。原因：</p>
       <p><code>url-test</code> 在<b>全部节点都挂</b>时会退化成选列表第一个节点，

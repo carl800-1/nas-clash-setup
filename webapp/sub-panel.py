@@ -201,17 +201,25 @@ def container_action(action):
 
 
 def container_recreate():
-    """重建 mihomo 容器使新配置生效。
+    """重建 mihomo 容器使新配置生效（换订阅链接时必须走这里）。
 
-    先尝试 Docker API 重建（等价于 docker compose up -d --force-recreate）：
-    停止 -> 改名备份 -> 用原镜像与端口新建同名容器。
-    失败时回退到 reload 配置（PUT /configs?force=true），不重启容器。
+    关键点（踩过的坑）：
+      * mihomo 的 http provider 在创建时把 url 读进内存，
+        PUT /providers 与 PUT /configs 都还用内存里的旧 url，
+        只有重建容器才会重读 config.yaml。
+      * 重建前必须真正 stop 旧容器，否则端口仍被占用，
+        新容器启动会报 "port is already allocated"。
+      * 必须完整克隆 HostConfig.PortBindings / ExposedPorts / RestartPolicy，
+        否则重建出来的容器没有任何映射端口，代理直接失效。
+
+    流程：采集配置 -> stop 旧容器 -> 改名 -> 用同一份配置新建 -> 启动。
+    失败会把名字改回并尝试重启旧容器，避免留下不可用的状态。
     """
     cid, err = docker_container_id()
     if not cid:
         return False, err or "找不到 mihomo 容器"
 
-    # 采集重建所需参数
+    # ---- 1. 采集重建所需参数 ----
     st, info = docker_req("GET", f"/containers/{cid}/json")
     if st != 200:
         return False, f"读取容器信息失败 HTTP {st}"
@@ -223,61 +231,82 @@ def container_recreate():
     image = d.get("Config", {}).get("Image", "")
     env = d.get("Config", {}).get("Env") or []
     binds = (d.get("HostConfig", {}).get("Binds") or [])
-    ports = []
+    hc = d.get("HostConfig", {}) or {}
+    exposed = d.get("Config", {}).get("ExposedPorts") or {}
+
+    # 端口映射：key 必须是 "7890/tcp" 这种纯容器端口，不能带 "7890:7890"
+    port_bindings = {}
     for p, binding in (d.get("NetworkSettings", {}).get("Ports") or {}).items():
         for b in binding or []:
-            ports.append(f"{b.get('HostPort', '')}:{p}")
+            hp = str(b.get("HostPort", "") or "")
+            if hp:
+                port_bindings[p] = [{"HostPort": hp}]
 
-    # 旧容器改名，让新容器能占用原名
+    if not port_bindings:
+        return False, "旧容器没有端口映射，拒绝重建（会丢失代理端口）"
+
+    # ---- 2. 先 stop，释放端口 ----
+    log("停止旧容器以释放端口...")
+    docker_req("POST", f"/containers/{cid}/stop?t=10")
+    st, _ = docker_req("GET", f"/containers/{cid}/json")
+    if st == 200:
+        try:
+            if (json.loads(_).get("State", {}) or {}).get("Running"):
+                log("[!] 旧容器仍在运行，无法释放端口")
+                return False, "旧容器未能停止"
+        except Exception:
+            pass
+
+    # ---- 3. 改名，让新容器能占用原名 ----
     backup = f"{MIHOMO_CT}_old_{int(time.time())}"
     st, txt = docker_req("POST", f"/containers/{cid}/rename?name={backup}")
     if not (200 <= st < 300):
+        docker_req("POST", f"/containers/{cid}/start")   # 回滚：把旧容器启动回来
         return False, f"重命名旧容器失败 HTTP {st}: {txt[:200]}"
 
     payload = {
         "Image": image,
         "Env": env,
         "Binds": binds,
-        "ExposedPorts": {p: {} for p in
-                         (d.get("Config", {}).get("ExposedPorts") or {})},
+        "ExposedPorts": {p: {} for p in exposed},
+        "Cmd": d.get("Config", {}).get("Cmd") or [],
+        "Entrypoint": d.get("Config", {}).get("Entrypoint") or [],
+        "WorkingDir": d.get("Config", {}).get("WorkingDir") or "",
+        "Labels": d.get("Config", {}).get("Labels") or {},
+        "Healthcheck": d.get("Config", {}).get("Healthcheck") or {},
         "HostConfig": {
             "Binds": binds,
-            "PortBindings": {
-                p: [{"HostPort": p.split(":")[0]}] for p in ports},
-            "CapAdd": d.get("HostConfig", {}).get("CapAdd") or [],
-            "RestartPolicy": d.get("HostConfig", {}).get("RestartPolicy")
-                             or {"Name": "no"},
+            "PortBindings": port_bindings,
+            "CapAdd": hc.get("CapAdd") or [],
+            "RestartPolicy": hc.get("RestartPolicy") or {"Name": "unless-stopped"},
+            "NetworkMode": hc.get("NetworkMode", "bridge"),
         },
         "NetworkingConfig": {
             "EndpointsConfig": {
-                d.get("HostConfig", {}).get("NetworkMode", "bridge"): {}
+                hc.get("NetworkMode", "bridge"): {}
             }
         },
     }
+
     st, txt = docker_req(
         "POST", f"/containers/create?name={MIHOMO_CT}", body=payload, timeout=90)
     if not (200 <= st < 300):
-        # 新建失败就把名字改回去，避免留下孤儿容器
         docker_req("POST", f"/containers/{cid}/rename?name={MIHOMO_CT}")
+        docker_req("POST", f"/containers/{cid}/start")
         return False, f"新建容器失败 HTTP {st}: {txt[:200]}"
 
-    new_cid = ""
-    try:
-        new_cid = json.loads(txt).get("Id", "")
-    except Exception:
-        pass
-
-    st, txt = docker_req("POST", f"/containers/{new_cid}/start", timeout=120)
+    st, txt = docker_req("POST", f"/containers/{MIHOMO_CT}/start")
     if not (200 <= st < 300):
+        # 新容器起不来：删掉它，把旧容器名字与状态都恢复
+        docker_req("DELETE", f"/containers/{MIHOMO_CT}?force=1&v=1")
+        docker_req("POST", f"/containers/{cid}/rename?name={MIHOMO_CT}")
+        docker_req("POST", f"/containers/{cid}/start")
         return False, f"新容器启动失败 HTTP {st}: {txt[:200]}"
 
-    # 新容器起来了再删旧的
-    docker_req("DELETE", f"/containers/{cid}?v=1&force=1", timeout=120)
-    log(f"容器已重建（原容器 {backup} 已清理）")
-    return True, "recreated"
+    log(f"容器重建完成（端口映射 {len(port_bindings)} 项已保留），旧容器暂留 {backup}")
+    return True, backup
 
 
-# ---------------- 订阅信息解析 ----------------
 def read_sub_url():
     try:
         with open(SUB_FILE, "r", encoding="utf-8") as f:
@@ -865,7 +894,7 @@ def do_update(new_url=None):
                 log("config.yaml 已更新")
 
         if is_provider:
-            ok = update_provider()
+            ok = update_provider(force_recreate=bool(new_url))
         else:
             ok = update_static()
 
@@ -929,7 +958,14 @@ def patch_provider_url(new_url):
         return False
 
 
-def update_provider():
+def update_provider(force_recreate=False):
+    """provider 架构：让 mihomo 重新拉取 provider 并重载配置。
+
+    force_recreate=True 时无条件重建容器。
+    换订阅链接（url 变了）时必须走这条：mihomo 的 http provider
+    在创建时就把 url 读进内存，PUT /providers 刷新和 PUT /configs
+    reload 都继续用内存里的旧 url，只有重建容器才会重读 config.yaml。
+    """
     """provider 架构：让 mihomo 重新拉取 provider 并重载配置。
 
     mihomo 有个 RESTful 端点可以触发 provider 立即更新：
@@ -949,7 +985,9 @@ def update_provider():
         req.add_header("Content-Type", "application/json")
         with _r.urlopen(req, timeout=30) as r:
             log(f"provider 刷新请求已提交 (HTTP {r.status})")
-        ok = True
+        ok = not force_recreate
+        if force_recreate:
+            log("订阅链接已变更，必须重建容器才能让新 url 生效")
     except Exception as e:
         log(f"provider 刷新接口调用失败：{e}，改用重建容器")
 

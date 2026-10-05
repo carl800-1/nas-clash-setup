@@ -4,6 +4,64 @@
 
 ---
 
+## [2.0.3] - 2026-10-05
+
+### 修复
+
+- **面板「更新订阅」换订阅后不生效**（本版核心）。根因是 mihomo 的 http provider
+  在**创建时就把 url 读进内存**，之后 `PUT /providers/proxies/airport` 刷新和
+  `PUT /configs` reload 都继续使用内存里的旧 url，只有**重建容器**才会重读
+  `config.yaml`。而 `update_provider()` 在刷新接口返回 204 时直接 `ok = True`，
+  跳过了重建容器分支 —— 于是新链接写进了 `config.yaml` 却永远拉不到新节点。
+  现在 `do_update()` 会把「是否换了链接」传给 `update_provider(force_recreate=...)`，
+  换链接时无条件重建容器。
+- **`container_recreate()` 端口格式错误**。原代码先拼出 `"7890:7890"` 形式的字符串，
+  又用 `p.split(":")[0]` 当 `PortBindings` 的 key，生成
+  `{"7890:7890": [{"HostPort": "7890"}]}`，Docker API 直接拒绝：
+  `invalid port '7890:7890': invalid syntax`。改为直接用 `容器端口/proto` 作 key。
+- **重建出的容器丢失全部端口映射**。原实现只带了 `Binds` / `CapAdd` / `RestartPolicy`，
+  没有 `ExposedPorts` / `PortBindings`，重建后代理端口直接消失、代理彻底不可用。
+  新实现完整克隆 `Cmd` / `Entrypoint` / `WorkingDir` / `Labels` / `Healthcheck` /
+  `ExposedPorts` / `PortBindings`，并在旧容器无端口映射时直接拒绝重建（宁可失败也不能
+  悄悄建出一个没有代理端口的容器）。
+- **重建时端口冲突**。原实现只 `rename` 旧容器而不 `stop`，新容器启动报
+  `port is already allocated`。新实现在改名之前先 `stop` 旧容器释放端口，
+  并在「新建失败 / 启动失败」两条路径上自动把旧容器名字与运行状态回滚。
+
+### 已知限制
+
+- **mihomo 换订阅必须重建容器**。`interval: 3600` 的定时自动更新只会在
+  **同一个 url** 下刷新节点列表；一旦 `config.yaml` 里的 url 变了，
+  定时任务不会察觉，需要点面板的「更新订阅」触发重建。这是 mihomo 的行为，
+  不是 bug，面板现已按此实现。
+- 重建成功后会留下一个 `mihomo_old_<时间戳>` 的已停止容器作为回滚备份，
+  确认新配置稳定后可手动删除。
+
+---
+
+## [2.0.2] - 2026-10-04
+
+### 修复
+
+- **Google 首页能打开但页面永远转圈**。`gstatic.com` 等静态资源域名被
+  `GEOIP,CN,DIRECT` 判成国内直连，而它们在国内不可达。在 `GEOIP,CN` 之前
+  插入强制代理规则：`gstatic.com` / `googleapis.com` / `gstatic.cn` /
+  `google.com` / `googleusercontent.com` 均走代理。修复后 Google 首页
+  约 0.61 秒，12/12 子资源加载成功。
+
+---
+
+## [2.0.1] - 2026-10-04
+
+### 变更
+
+- 换用付费机场订阅（47 节点，含 IEPL 线路），替换掉已失效的免费节点。
+- `nameserver-policy` 补充新机场域名，确保订阅域名与节点域名能正确解析。
+- `README.md` 补充「换机场完整流程」，明确必须先清空 `providers/airport.yaml`
+  缓存再刷新，否则新旧节点混杂会一直命中已失效的旧节点。
+
+---
+
 ## [2.0.0] - 2026-10-04
 
 ### 破坏性变更

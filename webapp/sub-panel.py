@@ -304,7 +304,66 @@ def container_recreate():
         return False, f"新容器启动失败 HTTP {st}: {txt[:200]}"
 
     log(f"容器重建完成（端口映射 {len(port_bindings)} 项已保留），旧容器暂留 {backup}")
+
+    # 重建成功后才清理历史旧容器，只保留最近一个当回滚保险。
+    # 用 try 兜住：清理失败绝不能把一次成功的重建变成失败。
+    try:
+        cleanup_old_containers(keep=1)
+    except Exception as e:
+        log(f"[!] 清理旧容器时出错（不影响本次重建）：{e}")
+
     return True, backup
+
+
+def cleanup_old_containers(keep=1):
+    """清理换订阅遗留的 mihomo_old_* 备份容器，只保留最近 keep 个。
+
+    为什么需要（踩过的坑）：
+      container_recreate() 为了失败可回滚，会把旧容器改名成
+      mihomo_old_<时间戳> 留着。但成功后没人清理，每次换订阅都
+      多留一个停止的容器。绿联 Docker 面板按「项目内所有容器是否
+      都running」判定健康，只要有 stopped 容器就给整个项目打
+      「异常」标签 —— 于是明明代理跑得好好的，面板却显示异常。
+
+    只删 stopped 的，且名字严格匹配 mihomo_old_<数字>，不会误伤。
+    keep=1 表示留一个最近的当回滚保险。
+    """
+    st, txt = docker_req("GET", "/containers/json?all=1")
+    if st != 200:
+        return f"列出容器失败 HTTP {st}"
+    try:
+        items = json.loads(txt)
+    except Exception:
+        return "容器列表解析失败"
+
+    pat = re.compile(r"^" + re.escape(MIHOMO_CT) + r"_old_(\d+)$")
+    olds = []
+    for c in items:
+        for n in (c.get("Names") or []):
+            name = n.lstrip("/")
+            m = pat.match(name)
+            if m:
+                #只考虑已停止的；万一有还在跑的（异常状态）不碰
+                olds.append((int(m.group(1)), name, c.get("State")))
+    if not olds:
+        return ""
+
+    olds.sort(reverse=True)
+    removed = []
+    for _, name, state in olds[keep:]:
+        if state == "running":
+            continue
+        st, _ = docker_req("DELETE", f"/containers/{name}?v=1")
+        if 200 <= st < 300:
+            removed.append(name)
+        else:
+            log(f"[!] 删除旧容器 {name} 失败 HTTP {st}")
+
+    kept = [n for _, n, _ in olds[:keep] if n not in removed]
+    if removed:
+        log(f"清理旧容器 {len(removed)} 个：{', '.join(removed)}"
+            + (f"（保留最近备份 {kept[0]}）" if kept else ""))
+    return f"已清理 {len(removed)} 个旧容器" if removed else ""
 
 
 def read_sub_url():
